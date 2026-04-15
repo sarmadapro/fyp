@@ -919,6 +919,26 @@ a {
   margin-top: var(--space-2);
 }
 
+/* Voice error display */
+.voice-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--accent-danger-soft);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  color: var(--accent-danger);
+  font-size: var(--font-size-sm);
+  max-width: 500px;
+  text-align: left;
+  animation: messageIn 0.3s ease-out;
+}
+
+.voice-error svg {
+  flex-shrink: 0;
+}
+
 /* Live transcription display */
 .voice-live {
   width: 100%;

@@ -9,7 +9,7 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          // Silero VAD ONNX models (v5 + legacy)
+          // Silero VAD ONNX models
           src: 'node_modules/@ricky0123/vad-web/dist/*.onnx',
           dest: './',
         },
@@ -19,11 +19,17 @@ export default defineConfig({
           dest: './',
         },
         {
-          // ONNX Runtime WASM files
-          src: 'node_modules/onnxruntime-web/dist/*.wasm',
+          // ONNX Runtime — WASM binaries + MJS loaders (both needed at runtime)
+          src: 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded*',
           dest: './',
         },
       ],
     }),
   ],
+  optimizeDeps: {
+    exclude: ['@ricky0123/vad-web', 'onnxruntime-web'],
+  },
+  worker: {
+    format: 'es',
+  },
 })

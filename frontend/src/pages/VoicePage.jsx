@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mic, MicOff, Loader2, Volume2, PhoneOff } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, PhoneOff, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 
@@ -12,6 +12,7 @@ export default function VoicePage() {
     isUserTalking,
     status,
     statusMessage,
+    error,
     exchanges,
     currentTranscription,
     currentAnswer,
@@ -25,6 +26,7 @@ export default function VoicePage() {
     } else {
       try {
         await connect();
+        toast.success('Voice conversation started!');
       } catch (err) {
         toast.error(err.message || 'Failed to start voice conversation');
       }
@@ -103,6 +105,14 @@ export default function VoicePage() {
           <h3>{statusInfo.title}</h3>
           <p>{statusInfo.subtitle}</p>
         </div>
+
+        {/* Error display */}
+        {error && (
+          <div className="voice-error">
+            <AlertCircle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* End call button when connected */}
         {isConnected && (

@@ -19,12 +19,12 @@ _env_loaded = False
 for _env_path in _possible_env_paths:
     if _env_path.exists():
         load_dotenv(_env_path)
-        print(f"[CONFIG] ✓ Loaded .env from: {_env_path}")
+        print(f"[CONFIG] [OK] Loaded .env from: {_env_path}")
         _env_loaded = True
         break
 
 if not _env_loaded:
-    print("[CONFIG] ⚠ WARNING: .env file not found in any expected location!")
+    print("[CONFIG] [WARN] WARNING: .env file not found in any expected location!")
     print("[CONFIG] Tried:")
     for path in _possible_env_paths:
         print(f"[CONFIG]   - {path}")
@@ -39,7 +39,7 @@ class Settings:
     BACKEND_HOST: str = os.getenv("BACKEND_HOST", "0.0.0.0")
     BACKEND_PORT: int = int(os.getenv("BACKEND_PORT", "8000"))
     CORS_ORIGINS: list[str] = os.getenv(
-        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000"
     ).split(",")
 
     # --- Groq LLM ---
