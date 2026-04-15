@@ -1,198 +1,152 @@
 import { useState } from 'react';
-import { Mic, Square, Loader2, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, PhoneOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import { voiceChat } from '../api/client';
+import { useVoiceConversation } from '../hooks/useVoiceConversation';
 
 export default function VoicePage() {
   const {
-    isRecording,
-    audioBlob,
-    duration,
-    startRecording,
-    stopRecording,
-    clearRecording,
-  } = useAudioRecorder();
+    isConnected,
+    isListening,
+    isSpeaking,
+    isProcessing,
+    isUserTalking,
+    status,
+    statusMessage,
+    exchanges,
+    currentTranscription,
+    currentAnswer,
+    connect,
+    disconnect,
+  } = useVoiceConversation();
 
-  const [processing, setProcessing] = useState(false);
-  const [conversationId, setConversationId] = useState(null);
-  const [exchanges, setExchanges] = useState([]);
-  const [playingAudio, setPlayingAudio] = useState(false);
-
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  const handleOrbClick = async () => {
-    if (processing) return;
-
-    if (isRecording) {
-      // Stop recording and process
-      stopRecording();
-    } else if (audioBlob) {
-      // Process the recorded audio
-      await processAudio();
+  const handleToggleConversation = async () => {
+    if (isConnected) {
+      disconnect();
     } else {
-      // Start recording
       try {
-        await startRecording();
+        await connect();
       } catch (err) {
-        toast.error(err.message);
+        toast.error(err.message || 'Failed to start voice conversation');
       }
     }
-  };
-
-  // Process audio when blob is available after recording stops
-  const processAudio = async () => {
-    if (!audioBlob) return;
-
-    setProcessing(true);
-    try {
-      const result = await voiceChat(audioBlob, conversationId);
-      setConversationId(result.conversation_id);
-
-      // Add exchange to history
-      setExchanges((prev) => [
-        ...prev,
-        {
-          userText: result.transcription,
-          aiText: result.answer,
-          audioBase64: result.audio_base64,
-        },
-      ]);
-
-      // Play audio response
-      if (result.audio_base64) {
-        playAudioResponse(result.audio_base64);
-      }
-
-      clearRecording();
-    } catch (err) {
-      toast.error(err.message || 'Voice chat failed');
-      clearRecording();
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  // Auto-process when recording stops and blob becomes available
-  useState(() => {
-    if (audioBlob && !isRecording && !processing) {
-      processAudio();
-    }
-  }, [audioBlob, isRecording]);
-
-  const playAudioResponse = (base64Audio) => {
-    try {
-      const audioBytes = atob(base64Audio);
-      const arrayBuffer = new ArrayBuffer(audioBytes.length);
-      const view = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < audioBytes.length; i++) {
-        view[i] = audioBytes.charCodeAt(i);
-      }
-
-      const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-
-      setPlayingAudio(true);
-      audio.onended = () => {
-        setPlayingAudio(false);
-        URL.revokeObjectURL(url);
-      };
-      audio.onerror = () => {
-        setPlayingAudio(false);
-        URL.revokeObjectURL(url);
-      };
-      audio.play();
-    } catch (err) {
-      console.error('Failed to play audio:', err);
-      setPlayingAudio(false);
-    }
-  };
-
-  const getStatusText = () => {
-    if (processing) return { title: 'Processing...', subtitle: 'Transcribing, thinking, and speaking' };
-    if (isRecording) return { title: 'Listening...', subtitle: 'Tap to stop recording' };
-    if (playingAudio) return { title: 'Speaking...', subtitle: 'AI is responding' };
-    return { title: 'Tap to Speak', subtitle: 'Ask your document a question' };
   };
 
   const getOrbClass = () => {
-    if (processing) return 'voice-orb processing';
-    if (isRecording) return 'voice-orb recording';
+    if (isProcessing) return 'voice-orb processing';
+    if (isSpeaking) return 'voice-orb speaking';
+    if (isUserTalking) return 'voice-orb recording';
+    if (isListening) return 'voice-orb listening-idle';
     return 'voice-orb';
   };
 
-  const status = getStatusText();
+  const getStatusInfo = () => {
+    if (!isConnected) {
+      return { title: 'Start Conversation', subtitle: 'Tap the orb to begin' };
+    }
+    if (isProcessing) {
+      return { title: 'Thinking...', subtitle: statusMessage || 'Processing your question' };
+    }
+    if (isSpeaking) {
+      return { title: 'Speaking...', subtitle: 'AI is responding' };
+    }
+    if (isUserTalking) {
+      return { title: 'Hearing you...', subtitle: 'Keep talking, I\'ll respond when you pause' };
+    }
+    if (isListening) {
+      return { title: 'Ready', subtitle: 'Speak whenever you\'re ready' };
+    }
+    return { title: 'Connected', subtitle: 'Getting ready...' };
+  };
+
+  const statusInfo = getStatusInfo();
 
   return (
     <div className="chat-container">
       <div className="voice-container">
-        {/* Orb */}
+        {/* Main Orb */}
         <div className="voice-orb-container">
           <button
             className={getOrbClass()}
-            onClick={handleOrbClick}
-            disabled={processing}
+            onClick={handleToggleConversation}
           >
-            {processing ? (
+            {isProcessing ? (
               <Loader2 className="spinning" />
-            ) : isRecording ? (
-              <Square />
-            ) : playingAudio ? (
+            ) : isSpeaking ? (
               <Volume2 />
+            ) : isConnected ? (
+              <Mic />
             ) : (
               <Mic />
             )}
           </button>
-          {isRecording && (
+
+          {/* Pulse rings only when user is actively speaking (VAD confirmed) */}
+          {isUserTalking && (
             <>
               <div className="voice-pulse-ring" />
               <div className="voice-pulse-ring" />
               <div className="voice-pulse-ring" />
             </>
           )}
-        </div>
 
-        {/* Timer */}
-        {isRecording && (
-          <div className="voice-timer">{formatTime(duration)}</div>
-        )}
+          {/* Speaking wave animation */}
+          {isSpeaking && (
+            <>
+              <div className="voice-pulse-ring speaking-ring" />
+              <div className="voice-pulse-ring speaking-ring" />
+            </>
+          )}
+        </div>
 
         {/* Status */}
         <div className="voice-status">
-          <h3>{status.title}</h3>
-          <p>{status.subtitle}</p>
+          <h3>{statusInfo.title}</h3>
+          <p>{statusInfo.subtitle}</p>
         </div>
 
-        {/* Transcript History */}
+        {/* End call button when connected */}
+        {isConnected && (
+          <button
+            className="btn btn-danger voice-end-btn"
+            onClick={disconnect}
+          >
+            <PhoneOff size={16} />
+            End Conversation
+          </button>
+        )}
+
+        {/* Live transcription */}
+        {(currentTranscription || currentAnswer) && (
+          <div className="voice-live">
+            {currentTranscription && (
+              <div className="voice-live-item user">
+                <span className="voice-live-label">You</span>
+                <span className="voice-live-text">{currentTranscription}</span>
+              </div>
+            )}
+            {currentAnswer && (
+              <div className="voice-live-item ai">
+                <span className="voice-live-label">AI</span>
+                <span className="voice-live-text">{currentAnswer}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Conversation History */}
         {exchanges.length > 0 && (
           <div className="voice-transcript">
             {exchanges.map((exchange, i) => (
               <div key={i}>
                 {exchange.userText && (
-                  <div className="voice-transcript-item">
-                    <div className="label">You said</div>
+                  <div className="voice-transcript-item user-item">
+                    <div className="label">You</div>
                     <div className="text">{exchange.userText}</div>
                   </div>
                 )}
-                <div className="voice-transcript-item">
-                  <div className="label">AI Response</div>
+                <div className="voice-transcript-item ai-item">
+                  <div className="label">AI</div>
                   <div className="text">{exchange.aiText}</div>
-                  {exchange.audioBase64 && (
-                    <button
-                      className="btn btn-secondary"
-                      style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}
-                      onClick={() => playAudioResponse(exchange.audioBase64)}
-                      disabled={playingAudio}
-                    >
-                      <Volume2 size={12} />
-                      Replay
-                    </button>
-                  )}
                 </div>
               </div>
             ))}

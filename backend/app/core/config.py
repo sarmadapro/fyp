@@ -7,9 +7,29 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from project root
-_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-load_dotenv(_env_path)
+# Try multiple paths to find .env file
+_possible_env_paths = [
+    Path(__file__).resolve().parent.parent.parent.parent / ".env",  # From backend/app/core/config.py to project root
+    Path(__file__).resolve().parent.parent.parent / ".env",  # One level up (in case structure is different)
+    Path.cwd() / ".env",  # Current working directory
+    Path.cwd().parent / ".env",  # Parent of current working directory
+]
+
+_env_loaded = False
+for _env_path in _possible_env_paths:
+    if _env_path.exists():
+        load_dotenv(_env_path)
+        print(f"[CONFIG] ✓ Loaded .env from: {_env_path}")
+        _env_loaded = True
+        break
+
+if not _env_loaded:
+    print("[CONFIG] ⚠ WARNING: .env file not found in any expected location!")
+    print("[CONFIG] Tried:")
+    for path in _possible_env_paths:
+        print(f"[CONFIG]   - {path}")
+    # Try loading from environment anyway
+    load_dotenv()
 
 
 class Settings:
@@ -30,9 +50,9 @@ class Settings:
 
     # --- RAG ---
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "500"))
-    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
-    RETRIEVAL_TOP_K: int = int(os.getenv("RETRIEVAL_TOP_K", "5"))
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+    RETRIEVAL_TOP_K: int = int(os.getenv("RETRIEVAL_TOP_K", "8"))
 
     # --- File Storage ---
     UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", "./data/uploads"))
@@ -46,6 +66,18 @@ class Settings:
         # Ensure directories exist
         self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         self.INDEX_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Validate critical settings
+        if not self.GROQ_API_KEY:
+            print("[CONFIG] WARNING: GROQ_API_KEY is not set!")
+            print("[CONFIG] Please add your Groq API key to the .env file")
+        else:
+            print(f"[CONFIG] GROQ_API_KEY loaded: {self.GROQ_API_KEY[:20]}...")
 
 
 settings = Settings()
+
+# Print loaded configuration on import
+print(f"[CONFIG] Backend Host: {settings.BACKEND_HOST}:{settings.BACKEND_PORT}")
+print(f"[CONFIG] LLM Model: {settings.LLM_MODEL}")
+print(f"[CONFIG] Embedding Model: {settings.EMBEDDING_MODEL}")

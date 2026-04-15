@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, Loader2 } from 'lucide-react';
-import { sendMessage } from '../api/client';
+import { sendMessageStream } from '../api/client';
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [streamingMessage, setStreamingMessage] = useState('');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -16,7 +17,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, streamingMessage]);
 
   const handleSend = async () => {
     const question = input.trim();
@@ -26,6 +27,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: 'user', content: question }]);
     setInput('');
     setLoading(true);
+    setStreamingMessage('');
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -33,12 +35,38 @@ export default function ChatPage() {
     }
 
     try {
-      const result = await sendMessage(question, conversationId);
-      setConversationId(result.conversation_id);
+      let fullAnswer = '';
+      let sources = [];
+      let newConversationId = conversationId;
+
+      await sendMessageStream(
+        question,
+        conversationId,
+        (chunk) => {
+          // Handle different chunk types
+          if (chunk.type === 'token') {
+            fullAnswer += chunk.content;
+            setStreamingMessage(fullAnswer);
+          } else if (chunk.type === 'context') {
+            // Could show "Found X relevant chunks" status
+            console.log(`Found ${chunk.chunks} relevant chunks`);
+          } else if (chunk.type === 'done') {
+            newConversationId = chunk.conversation_id;
+            sources = chunk.sources || [];
+          } else if (chunk.type === 'error') {
+            fullAnswer = chunk.message;
+            setStreamingMessage(fullAnswer);
+          }
+        }
+      );
+
+      // Add complete message
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: result.answer, sources: result.sources },
+        { role: 'assistant', content: fullAnswer, sources },
       ]);
+      setConversationId(newConversationId);
+      setStreamingMessage('');
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -47,6 +75,7 @@ export default function ChatPage() {
           content: `Error: ${err.message}. Please check that the backend is running and a document is uploaded.`,
         },
       ]);
+      setStreamingMessage('');
     } finally {
       setLoading(false);
     }
@@ -70,7 +99,7 @@ export default function ChatPage() {
     <div className="chat-container">
       {/* Messages Area */}
       <div className="chat-messages">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !streamingMessage ? (
           <div className="chat-empty">
             <MessageCircle />
             <h3>Start a Conversation</h3>
@@ -80,29 +109,42 @@ export default function ChatPage() {
             </p>
           </div>
         ) : (
-          messages.map((msg, i) => (
-            <div key={i} className={`message ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === 'assistant' ? 'AI' : 'You'}
+          <>
+            {messages.map((msg, i) => (
+              <div key={i} className={`message ${msg.role}`}>
+                <div className="message-avatar">
+                  {msg.role === 'assistant' ? 'AI' : 'You'}
+                </div>
+                <div className="message-content">
+                  {msg.content}
+                </div>
               </div>
-              <div className="message-content">
-                {msg.content}
-              </div>
-            </div>
-          ))
-        )}
+            ))}
 
-        {/* Loading indicator */}
-        {loading && (
-          <div className="message assistant">
-            <div className="message-avatar">AI</div>
-            <div className="message-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div className="spinner" />
-              <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                Thinking...
-              </span>
-            </div>
-          </div>
+            {/* Streaming message */}
+            {streamingMessage && (
+              <div className="message assistant">
+                <div className="message-avatar">AI</div>
+                <div className="message-content">
+                  {streamingMessage}
+                  <span className="streaming-cursor">▊</span>
+                </div>
+              </div>
+            )}
+
+            {/* Loading indicator (before streaming starts) */}
+            {loading && !streamingMessage && (
+              <div className="message assistant">
+                <div className="message-avatar">AI</div>
+                <div className="message-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="spinner" />
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                    Thinking...
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <div ref={messagesEndRef} />

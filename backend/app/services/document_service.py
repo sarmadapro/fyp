@@ -33,7 +33,7 @@ class DocumentService:
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
             length_function=len,
-            separators=["\n\n", "\n", ". ", " ", ""],
+            separators=["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""],
         )
 
         # Try to load existing index
@@ -199,15 +199,19 @@ class DocumentService:
             except Exception as e:
                 logger.warning(f"Failed to load existing index: {e}")
 
-    def similarity_search(self, query: str, k: int | None = None) -> list[dict]:
+    def similarity_search(self, query: str, top_k: int | None = None) -> list[dict]:
         """
         Search the FAISS index for chunks similar to the query.
         Returns list of {"content": str, "metadata": dict, "score": float}.
+        
+        Args:
+            query: The search query
+            top_k: Number of results to return (default from settings)
         """
         if not self._vector_store:
             return []
 
-        k = k or settings.RETRIEVAL_TOP_K
+        k = top_k or settings.RETRIEVAL_TOP_K
         results = self._vector_store.similarity_search_with_score(query, k=k)
 
         return [

@@ -1,6 +1,13 @@
 """
 Voice API routes.
-Handles voice-to-voice interaction via STT → RAG → TTS pipeline.
+Handles voice-to-voice interaction via STT -> RAG -> TTS pipeline.
+
+Endpoints:
+  POST /voice/transcribe     — One-shot STT
+  POST /voice/synthesize     — One-shot TTS  
+  POST /voice/chat           — One-shot full pipeline (REST)
+  WS   /voice/conversation   — Real-time conversational loop (new)
+  WS   /voice/stream         — Legacy streaming (backward compat)
 """
 
 import logging
@@ -10,7 +17,13 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, WebSocket, WebSo
 from fastapi.responses import Response
 
 from app.models.schemas import TranscriptionResponse
-from app.services.voice_service import transcribe_audio, synthesize_speech, voice_to_voice, voice_to_voice_stream
+from app.services.voice_service import (
+    transcribe_audio,
+    synthesize_speech,
+    voice_to_voice,
+    voice_to_voice_stream,
+    handle_voice_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +59,8 @@ async def voice_chat_endpoint(
     conversation_id: str | None = None,
 ):
     """
-    Full voice-to-voice chat:
-    1. Upload audio recording
-    2. Transcribes the audio (STT)
-    3. Sends through RAG chat pipeline
-    4. Synthesizes the answer (TTS)
-    5. Returns both text and audio response
-
-    Response: JSON with transcription, answer text, and base64-encoded audio.
+    Full voice-to-voice chat (REST, non-streaming):
+    Upload audio -> STT -> RAG -> TTS -> return text + audio
     """
     try:
         audio_bytes = await file.read()
@@ -70,15 +77,44 @@ async def voice_chat_endpoint(
         raise HTTPException(status_code=500, detail=f"Voice chat failed: {str(e)}")
 
 
+@router.websocket("/conversation")
+async def voice_conversation_endpoint(websocket: WebSocket):
+    """
+    Real-time conversational voice WebSocket.
+
+    The client streams mic audio chunks, the server detects silence,
+    transcribes, runs RAG, and streams back TTS audio sentence-by-sentence.
+
+    This is the primary endpoint for the voice page.
+    """
+    await websocket.accept()
+    logger.info("Voice conversation WebSocket connected")
+
+    try:
+        await handle_voice_conversation(websocket)
+    except WebSocketDisconnect:
+        logger.info("Voice conversation WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Voice conversation error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+
 @router.websocket("/stream")
 async def voice_websocket_endpoint(websocket: WebSocket, conversation_id: str | None = None):
     """
-    WebSocket endpoint for real-time voice interaction.
-    Accepts audio bytes, streams back status, transcription, and TTS audio chunks.
+    Legacy WebSocket endpoint for voice interaction.
+    Accepts a single audio blob, processes it, streams back results.
     """
     await websocket.accept()
     try:
-        # Receive audio recording as bytes
         audio_bytes = await websocket.receive_bytes()
         await voice_to_voice_stream(websocket, audio_bytes, "audio.wav", conversation_id)
     except WebSocketDisconnect:

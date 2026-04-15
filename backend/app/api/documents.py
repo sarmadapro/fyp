@@ -11,6 +11,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.core.config import settings
 from app.models.schemas import DocumentStatus, DocumentUploadResponse, DocumentDeleteResponse
 from app.services.document_service import document_service
+from app.services.chat_service import invalidate_domain_cache
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,9 @@ async def upload_document(file: UploadFile = File(...)):
         # Process and index the document
         chunk_count = document_service.process_and_index(file_path, file.filename, file_ext)
 
+        # Invalidate domain summary cache so it re-analyzes the new document
+        invalidate_domain_cache()
+
         return DocumentUploadResponse(
             message="Document uploaded and indexed successfully.",
             document_name=file.filename,
@@ -93,4 +97,5 @@ async def delete_document():
         raise HTTPException(status_code=404, detail="No document is currently loaded.")
 
     document_service.delete_document()
+    invalidate_domain_cache()
     return DocumentDeleteResponse(message="Document deleted successfully.")

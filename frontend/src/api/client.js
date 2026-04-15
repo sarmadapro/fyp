@@ -64,6 +64,54 @@ export async function sendMessage(question, conversationId = null) {
   return res.json();
 }
 
+export async function sendMessageStream(question, conversationId = null, onChunk) {
+  const url = `${API_BASE}/chat/stream`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      question,
+      conversation_id: conversationId,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Request failed: ${response.status}`);
+  }
+
+  // Read the stream
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    // Decode the chunk
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process complete messages (SSE format: "data: {...}\n\n")
+    const lines = buffer.split('\n\n');
+    buffer = lines.pop(); // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6); // Remove "data: " prefix
+        try {
+          const chunk = JSON.parse(data);
+          onChunk(chunk);
+        } catch (e) {
+          console.error('Failed to parse SSE chunk:', e);
+        }
+      }
+    }
+  }
+}
+
 export async function clearChatHistory(conversationId) {
   const res = await request(`/chat/history/${conversationId}`, { method: 'DELETE' });
   return res.json();

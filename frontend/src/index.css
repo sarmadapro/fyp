@@ -618,6 +618,17 @@ a {
   box-shadow: 0 0 40px rgba(255, 107, 107, 0.3);
 }
 
+.voice-orb.listening-idle {
+  animation: orbGentlePulse 3s ease-in-out infinite;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  box-shadow: 0 0 25px var(--accent-primary-glow);
+}
+
+@keyframes orbGentlePulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 25px var(--accent-primary-glow); }
+  50% { transform: scale(1.02); box-shadow: 0 0 35px var(--accent-primary-glow); }
+}
+
 .voice-orb.processing {
   animation: orbSpin 2s linear infinite;
   background: linear-gradient(135deg, var(--accent-warning), var(--accent-primary));
@@ -845,4 +856,119 @@ a {
   .page-body {
     padding: var(--space-4);
   }
+}
+
+
+/* ─── Streaming Cursor Animation ───────────────────────────── */
+.streaming-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* ─── Voice Conversation Enhancements ──────────────────────── */
+
+/* Speaking state orb */
+.voice-orb.speaking {
+  animation: orbBreathe 2s ease-in-out infinite;
+  background: linear-gradient(135deg, var(--accent-secondary), #00b894);
+  box-shadow: 0 0 40px rgba(0, 206, 201, 0.3);
+}
+
+@keyframes orbBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+/* Speaking pulse rings */
+.voice-pulse-ring.speaking-ring {
+  animation: speakingPulse 2s ease-out infinite;
+  border-color: var(--accent-secondary);
+}
+
+.voice-pulse-ring.speaking-ring:nth-child(2) {
+  animation-delay: 1s;
+}
+
+@keyframes speakingPulse {
+  0% {
+    width: 140px;
+    height: 140px;
+    opacity: 0.4;
+  }
+  100% {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+  }
+}
+
+/* End conversation button */
+.voice-end-btn {
+  margin-top: var(--space-2);
+}
+
+/* Live transcription display */
+.voice-live {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.voice-live-item {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  animation: messageIn 0.3s ease-out;
+}
+
+.voice-live-item.user {
+  background: var(--accent-primary-soft);
+  border: 1px solid rgba(108, 92, 231, 0.2);
+}
+
+.voice-live-item.ai {
+  background: var(--accent-secondary-soft);
+  border: 1px solid rgba(0, 206, 201, 0.2);
+}
+
+.voice-live-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: var(--space-2);
+}
+
+.voice-live-text {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Improved transcript items */
+.voice-transcript-item.user-item {
+  border-left: 3px solid var(--accent-primary);
+}
+
+.voice-transcript-item.ai-item {
+  border-left: 3px solid var(--accent-secondary);
+}
+
+/* Spinning animation for loader icon */
+.spinning {
+  animation: spin 1s linear infinite;
 }

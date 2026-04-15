@@ -68,6 +68,18 @@ async def startup_event():
     logger.info(f"  TTS Service:  {settings.TTS_SERVICE_URL}")
     logger.info(f"  LLM Model:    {settings.LLM_MODEL}")
     logger.info(f"  Embedding:    {settings.EMBEDDING_MODEL}")
+    
+    # Validate critical configuration
+    if not settings.GROQ_API_KEY:
+        logger.error("=" * 60)
+        logger.error("CRITICAL ERROR: GROQ_API_KEY is not set!")
+        logger.error("Please add your Groq API key to the .env file")
+        logger.error("Get one free at: https://console.groq.com")
+        logger.error("=" * 60)
+        raise ValueError("GROQ_API_KEY is required but not set in environment")
+    else:
+        logger.info(f"  Groq API Key: {settings.GROQ_API_KEY[:20]}... (loaded)")
+    
     logger.info("=" * 60)
 
 
