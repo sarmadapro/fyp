@@ -1,15 +1,5 @@
 """
-Voice service — Real-time conversational pipeline.
-
-Architecture:
-  1. Frontend VAD detects speech → sends complete utterance as WAV
-  2. Backend receives full WAV → STT transcription
-  3. Full transcription goes through RAG pipeline  
-  4. AI response is split into sentences, each sent to TTS separately
-  5. TTS audio chunks stream back to frontend for immediate playback
-
-This gives a natural conversational feel — the user just talks,
-and the AI responds with voice once they pause.
+Voice service - Real-time conversational pipeline.
 """
 
 import re
@@ -18,12 +8,14 @@ import logging
 import base64
 import time
 import traceback
+import io
+import wave
 
 import httpx
 from fastapi import WebSocket
 
 from app.core.config import settings
-from app.services.chat_service import chat
+from app.services.chat_service import chat, chat_stream
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +24,10 @@ _TIMEOUT = httpx.Timeout(timeout=120.0, connect=10.0)
 _STT_TURN_TIMEOUT_SEC = 180.0
 _RAG_TURN_TIMEOUT_SEC = 90.0
 _TTS_CHUNK_TIMEOUT_SEC = 60.0
+_PARTIAL_STT_INTERVAL_SEC = 0.35
+_PARTIAL_STT_MIN_AUDIO_SEC = 0.35
+_PARTIAL_STT_WINDOW_SEC = 3.0
+_PARTIAL_STT_MAX_TEXT_CHARS = 240
 
 # Shared async HTTP client (connection pooling, much faster than per-request)
 _http_client: httpx.AsyncClient | None = None
@@ -80,7 +76,6 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.wav") -> d
     Send audio to the STT microservice for transcription.
     Returns: {"text": str, "language": str, "duration": float}
     """
-    # Determine content type from extension
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "wav"
     content_types = {
         "wav": "audio/wav",
@@ -124,41 +119,19 @@ async def synthesize_speech(text: str, voice: str = "af_sky") -> bytes:
     return audio_bytes
 
 
-async def synthesize_speech_stream(text: str, voice: str = "af_sky"):
-    """
-    Send text to the TTS microservice and stream the audio response.
-    Yields audio bytes chunks.
-    """
-    client = _get_http_client()
-    async with client.stream(
-        "POST",
-        f"{settings.TTS_SERVICE_URL}/synthesize/stream",
-        json={"text": text, "voice": voice},
-    ) as response:
-        response.raise_for_status()
-        async for chunk in response.aiter_bytes():
-            yield chunk
-
-
 # ---------------------------------------------------------------------------
-#  Sentence Splitting for TTS Streaming
+#  Sentence Helpers
 # ---------------------------------------------------------------------------
 
 def split_into_sentences(text: str) -> list[str]:
-    """
-    Split AI response into natural sentence groups for TTS.
-    Groups short sentences together so TTS chunks are balanced
-    (not too short, not too long).
-    """
-    # Split on sentence-ending punctuation
+    """Split full text into sentence groups (used by legacy REST path)."""
     raw_sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     raw_sentences = [s.strip() for s in raw_sentences if s.strip()]
 
     if not raw_sentences:
         return [text] if text.strip() else []
 
-    # Group short sentences together (aim for ~50-150 char chunks)
-    groups = []
+    groups: list[str] = []
     current_group = ""
 
     for sentence in raw_sentences:
@@ -176,6 +149,125 @@ def split_into_sentences(text: str) -> list[str]:
     return groups
 
 
+def extract_complete_sentences(text: str) -> tuple[list[str], str]:
+    """Extract complete sentences from a streaming buffer."""
+    sentences: list[str] = []
+    remaining = text
+
+    while True:
+        match = re.search(r"[.!?](?:\s+|$)", remaining)
+        if not match:
+            break
+        sentence = remaining[:match.end()].strip()
+        remaining = remaining[match.end():].lstrip()
+        if sentence:
+            sentences.append(sentence)
+
+    return sentences, remaining
+
+
+async def iterate_stream_with_timeout(async_gen, timeout_sec: float):
+    """Iterate an async generator with per-item timeout."""
+    while True:
+        try:
+            item = await asyncio.wait_for(async_gen.__anext__(), timeout=timeout_sec)
+        except StopAsyncIteration:
+            break
+        yield item
+
+
+def _new_streaming_session_state() -> dict:
+    """Per-websocket temporary state for incremental STT."""
+    return {
+        "pcm": bytearray(),
+        "sample_rate": 16000,
+        "last_partial_at": 0.0,
+        "last_partial_text": "",
+    }
+
+
+def _wav_to_pcm16(wav_bytes: bytes) -> tuple[bytes, int]:
+    """Extract mono PCM16 bytes + sample rate from WAV bytes."""
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        sample_rate = wav_file.getframerate()
+        frame_count = wav_file.getnframes()
+        raw = wav_file.readframes(frame_count)
+
+    if sample_width != 2:
+        raise ValueError(f"Unsupported WAV sample width: {sample_width}. Expected 16-bit PCM.")
+
+    if channels == 1:
+        return raw, sample_rate
+
+    # Downmix multi-channel PCM16 to mono by taking first channel sample.
+    mono = bytearray()
+    frame_size = channels * 2
+    for i in range(0, len(raw), frame_size):
+        mono.extend(raw[i:i + 2])
+    return bytes(mono), sample_rate
+
+
+def _pcm16_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:
+    """Wrap mono PCM16 bytes in a WAV container."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return buffer.getvalue()
+
+
+def _tail_pcm_window(pcm_bytes: bytes, sample_rate: int, window_sec: float) -> bytes:
+    """Return latest window of PCM bytes."""
+    max_samples = int(sample_rate * window_sec)
+    max_bytes = max_samples * 2
+    if len(pcm_bytes) <= max_bytes:
+        return pcm_bytes
+    return pcm_bytes[-max_bytes:]
+
+
+async def _emit_partial_transcription_if_ready(websocket: WebSocket, session_state: dict):
+    """Run lightweight partial STT on the current buffered utterance."""
+    pcm_bytes = bytes(session_state["pcm"])
+    sample_rate = int(session_state["sample_rate"])
+
+    # Need enough audio to avoid noisy partial hypotheses.
+    min_bytes = int(sample_rate * _PARTIAL_STT_MIN_AUDIO_SEC) * 2
+    if len(pcm_bytes) < min_bytes:
+        return
+
+    now = time.time()
+    if now - float(session_state["last_partial_at"]) < _PARTIAL_STT_INTERVAL_SEC:
+        return
+
+    session_state["last_partial_at"] = now
+    partial_pcm = _tail_pcm_window(pcm_bytes, sample_rate, _PARTIAL_STT_WINDOW_SEC)
+    partial_audio = _pcm16_to_wav_bytes(partial_pcm, sample_rate)
+
+    try:
+        result = await transcribe_audio(partial_audio, "partial.wav")
+        partial_text = (result.get("text") or "").strip()
+        if not partial_text:
+            return
+
+        # Avoid spamming duplicate partials to the client.
+        prev_text = str(session_state["last_partial_text"])
+        if partial_text == prev_text:
+            return
+
+        session_state["last_partial_text"] = partial_text
+        clipped = partial_text[:_PARTIAL_STT_MAX_TEXT_CHARS]
+        await websocket.send_json({
+            "type": "partial_transcription",
+            "text": clipped,
+        })
+    except Exception as e:
+        logger.debug(f"Partial STT skipped due to error: {e}")
+
+
 # ---------------------------------------------------------------------------
 #  Legacy: Full voice-to-voice (non-streaming, kept for /voice/chat REST)
 # ---------------------------------------------------------------------------
@@ -191,7 +283,6 @@ async def voice_to_voice(
     2. Send transcription through RAG chat
     3. Synthesize response (TTS)
     """
-    # 1. STT
     logger.info("Voice pipeline: Starting transcription...")
     transcription = await transcribe_audio(audio_bytes, filename)
     user_text = transcription.get("text", "").strip()
@@ -206,7 +297,6 @@ async def voice_to_voice(
 
     logger.info(f"Voice pipeline: Transcribed -> '{user_text}'")
 
-    # 2. RAG Chat — run in thread to avoid blocking the async event loop
     loop = asyncio.get_event_loop()
     chat_result = await loop.run_in_executor(None, chat, user_text, conversation_id)
     answer = chat_result["answer"]
@@ -214,7 +304,6 @@ async def voice_to_voice(
 
     logger.info(f"Voice pipeline: Answer -> '{answer[:100]}...'")
 
-    # 3. TTS
     logger.info("Voice pipeline: Synthesizing speech...")
     audio = await synthesize_speech(answer)
 
@@ -232,28 +321,10 @@ async def voice_to_voice(
 # ---------------------------------------------------------------------------
 
 async def handle_voice_conversation(websocket: WebSocket):
-    """
-    Main conversational voice loop over WebSocket.
-
-    Protocol (frontend -> backend):
-      {"type": "audio_complete", "data": "<base64 WAV>"}   — complete utterance (VAD-captured)
-      {"type": "end_session"}                               — user wants to stop
-      {"type": "config", "conversation_id": "..."}          — set conversation context
-
-    Protocol (backend -> frontend):
-      {"type": "listening"}                               — ready for audio
-      {"type": "status", "message": "..."}                — status updates
-      {"type": "transcription", "text": "..."}            — what user said
-      {"type": "answer", "text": "...", "conversation_id": "..."}  — AI text response
-      {"type": "audio_chunk", "data": "<base64>", "index": n, "total": n}
-                                                          — TTS audio chunk
-      {"type": "speaking_done"}                           — AI finished speaking
-      {"type": "error", "message": "..."}                 — errors
-    """
-    # Persistent conversation_id across the entire WebSocket session
+    """Main conversational voice loop over WebSocket."""
     conversation_id = None
+    streaming_state = _new_streaming_session_state()
 
-    # Health-check STT and TTS before starting
     stt_ok = await check_stt_health()
     tts_ok = await check_tts_health()
 
@@ -269,12 +340,10 @@ async def handle_voice_conversation(websocket: WebSocket):
         logger.warning("TTS service is NOT reachable. Voice responses will be text-only.")
         await websocket.send_json({
             "type": "status",
-            "message": "TTS service unavailable — responses will be text-only."
+            "message": "TTS service unavailable - responses will be text-only."
         })
 
-    logger.info(f"Voice session started (STT={'✓' if stt_ok else '✗'}, TTS={'✓' if tts_ok else '✗'})")
-
-    # Signal that we're ready
+    logger.info(f"Voice session started (STT={'OK' if stt_ok else 'X'}, TTS={'OK' if tts_ok else 'X'})")
     await websocket.send_json({"type": "listening"})
 
     try:
@@ -286,8 +355,63 @@ async def handle_voice_conversation(websocket: WebSocket):
                 conversation_id = message.get("conversation_id")
                 logger.info(f"Voice session configured: conv_id={conversation_id}")
 
+            elif msg_type == "audio_chunk":
+                audio_data = message.get("data", "")
+                if not audio_data:
+                    continue
+
+                try:
+                    chunk_bytes = base64.b64decode(audio_data)
+                    if not chunk_bytes:
+                        continue
+                    chunk_pcm, chunk_sample_rate = _wav_to_pcm16(chunk_bytes)
+                    if not chunk_pcm:
+                        continue
+                    streaming_state["sample_rate"] = chunk_sample_rate
+                    streaming_state["pcm"].extend(chunk_pcm)
+
+                    await _emit_partial_transcription_if_ready(websocket, streaming_state)
+                except Exception as e:
+                    logger.debug(f"Ignoring invalid audio_chunk: {e}")
+
+            elif msg_type == "audio_commit":
+                buffered_pcm = bytes(streaming_state["pcm"])
+                sample_rate = int(streaming_state["sample_rate"])
+                streaming_state = _new_streaming_session_state()
+
+                if len(buffered_pcm) < 1000:
+                    logger.info(f"Committed audio too short ({len(buffered_pcm)} bytes), skipping.")
+                    await websocket.send_json({"type": "listening"})
+                    continue
+
+                buffered_audio = _pcm16_to_wav_bytes(buffered_pcm, sample_rate)
+                logger.info(
+                    f"--- New voice turn (streamed): {len(buffered_pcm)} PCM bytes @ {sample_rate}Hz ---"
+                )
+
+                try:
+                    conversation_id = await _process_voice_turn(
+                        websocket,
+                        buffered_audio,
+                        conversation_id,
+                        filename="recording.wav",
+                    )
+                except Exception as e:
+                    logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Something went wrong processing your speech. Try again."
+                    })
+
+                await websocket.send_json({"type": "listening"})
+
+            elif msg_type == "audio_discard":
+                streaming_state = _new_streaming_session_state()
+                logger.debug("Discarded current streamed utterance buffer.")
+
             elif msg_type == "audio_complete":
-                # Complete utterance from VAD — process it directly
+                # Legacy one-shot utterance; clear any streamed buffer first.
+                streaming_state = _new_streaming_session_state()
                 audio_data = message.get("data", "")
                 if not audio_data:
                     logger.warning("[Voice] Received empty audio_complete")
@@ -306,13 +430,10 @@ async def handle_voice_conversation(websocket: WebSocket):
                     await websocket.send_json({"type": "listening"})
                     continue
 
-                logger.info(f"━━━ New voice turn: {len(combined_audio)} bytes of audio ━━━")
+                logger.info(f"--- New voice turn: {len(combined_audio)} bytes of audio ---")
 
                 try:
-                    # Pass conversation_id and receive the updated one
-                    conversation_id = await _process_voice_turn(
-                        websocket, combined_audio, conversation_id
-                    )
+                    conversation_id = await _process_voice_turn(websocket, combined_audio, conversation_id)
                 except Exception as e:
                     logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
                     await websocket.send_json({
@@ -320,7 +441,6 @@ async def handle_voice_conversation(websocket: WebSocket):
                         "message": "Something went wrong processing your speech. Try again."
                     })
 
-                # Ready for next turn
                 await websocket.send_json({"type": "listening"})
 
             elif msg_type == "end_session":
@@ -335,24 +455,23 @@ async def _process_voice_turn(
     websocket: WebSocket,
     audio_bytes: bytes,
     conversation_id: str | None,
+    filename: str = "recording.wav",
 ) -> str | None:
     """
     Process a single voice turn:
-    1. STT — transcribe the audio
-    2. RAG — get AI response
-    3. TTS — synthesize response sentence by sentence, streaming audio back
-
-    Returns the conversation_id (may be newly created if None was passed).
+    1. STT - transcribe the audio
+    2. RAG stream - generate text incrementally
+    3. TTS - synthesize completed sentences immediately
     """
     turn_start = time.time()
 
-    # ── 1. STT ──
+    # 1) STT
     await websocket.send_json({"type": "status", "message": "Transcribing..."})
     stt_start = time.time()
 
     try:
         transcription = await asyncio.wait_for(
-            transcribe_audio(audio_bytes, "recording.wav"),
+            transcribe_audio(audio_bytes, filename),
             timeout=_STT_TURN_TIMEOUT_SEC,
         )
         user_text = transcription.get("text", "").strip()
@@ -364,7 +483,7 @@ async def _process_voice_turn(
         })
         return conversation_id
     except httpx.ConnectError:
-        logger.error("STT service connection refused — is it running on port 8001?")
+        logger.error("STT service connection refused - is it running on port 8001?")
         await websocket.send_json({
             "type": "error",
             "message": "Can't reach speech-to-text service. Is it running?"
@@ -394,128 +513,138 @@ async def _process_voice_turn(
         return conversation_id
 
     stt_time = time.time() - stt_start
-    logger.info(f"[Turn] STT: {stt_time:.2f}s → '{user_text}'")
+    logger.info(f"[Turn] STT: {stt_time:.2f}s -> '{user_text}'")
 
     if not user_text:
         await websocket.send_json({
             "type": "error",
-            "message": "Couldn't catch that — try speaking more clearly."
+            "message": "Couldn't catch that - try speaking more clearly."
         })
         return conversation_id
 
-    await websocket.send_json({
-        "type": "transcription",
-        "text": user_text,
-    })
+    await websocket.send_json({"type": "transcription", "text": user_text})
 
-    # ── 2. RAG Chat ──
+    # 2) RAG stream + 3) Early TTS
     await websocket.send_json({"type": "status", "message": "Thinking..."})
     rag_start = time.time()
+    tts_start = time.time()
 
-    # Run the synchronous chat() in a thread pool to avoid blocking
-    # the async event loop. Without this, the WebSocket would hang.
-    loop = asyncio.get_event_loop()
+    tts_available = await check_tts_health()
+    if tts_available:
+        await websocket.send_json({"type": "status", "message": "Speaking..."})
+    else:
+        logger.warning("[Turn] TTS unavailable; continuing in text-only mode")
+
+    new_conv_id = conversation_id
+    answer = ""
+    buffer = ""
+    successful_chunks = 0
+    chunk_index = 0
+
     try:
-        chat_result = await asyncio.wait_for(
-            loop.run_in_executor(None, chat, user_text, conversation_id),
-            timeout=_RAG_TURN_TIMEOUT_SEC,
-        )
+        stream = chat_stream(user_text, conversation_id)
+        async for event in iterate_stream_with_timeout(stream, _RAG_TURN_TIMEOUT_SEC):
+            event_type = event.get("type")
+
+            if event_type == "token":
+                token = event.get("content", "")
+                if not token:
+                    continue
+
+                answer += token
+                buffer += token
+
+                ready_sentences, buffer = extract_complete_sentences(buffer)
+                for sentence in ready_sentences:
+                    await websocket.send_json({
+                        "type": "answer",
+                        "text": answer,
+                        "conversation_id": new_conv_id,
+                    })
+
+                    if not tts_available:
+                        continue
+
+                    try:
+                        audio_bytes_out = await asyncio.wait_for(
+                            synthesize_speech(sentence),
+                            timeout=_TTS_CHUNK_TIMEOUT_SEC,
+                        )
+                        if audio_bytes_out and len(audio_bytes_out) > 44:
+                            chunk_index += 1
+                            b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
+                            await websocket.send_json({
+                                "type": "audio_chunk",
+                                "data": b64_audio,
+                                "index": chunk_index,
+                                "total": chunk_index,
+                            })
+                            successful_chunks += 1
+                            logger.info(f"[Turn] Early TTS chunk {chunk_index}: {len(audio_bytes_out)} bytes sent")
+                    except asyncio.TimeoutError:
+                        logger.error(f"[Turn] TTS timed out at early chunk {chunk_index + 1}")
+                    except Exception as e:
+                        logger.error(f"[Turn] Early TTS failed: {e}")
+
+            elif event_type == "done":
+                new_conv_id = event.get("conversation_id", new_conv_id)
+            elif event_type == "error":
+                raise RuntimeError(event.get("message", "RAG streaming failed"))
+
+        # Flush trailing text as final chunk if needed.
+        tail = buffer.strip()
+        if tail and tts_available:
+            try:
+                audio_bytes_out = await asyncio.wait_for(
+                    synthesize_speech(tail),
+                    timeout=_TTS_CHUNK_TIMEOUT_SEC,
+                )
+                if audio_bytes_out and len(audio_bytes_out) > 44:
+                    chunk_index += 1
+                    b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
+                    await websocket.send_json({
+                        "type": "audio_chunk",
+                        "data": b64_audio,
+                        "index": chunk_index,
+                        "total": chunk_index,
+                    })
+                    successful_chunks += 1
+                    logger.info(f"[Turn] Final TTS chunk {chunk_index}: {len(audio_bytes_out)} bytes sent")
+            except Exception as e:
+                logger.error(f"[Turn] Final TTS chunk failed: {e}")
+
     except asyncio.TimeoutError:
-        logger.error("RAG chat timed out")
+        logger.error("RAG stream timed out")
         await websocket.send_json({
             "type": "error",
             "message": "I took too long to generate a response. Please try again."
         })
         return conversation_id
     except Exception as e:
-        logger.error(f"RAG chat failed: {e}\n{traceback.format_exc()}")
+        logger.error(f"RAG streaming failed: {e}\n{traceback.format_exc()}")
         await websocket.send_json({
             "type": "error",
             "message": "Sorry, I had trouble generating a response. Try again?"
         })
         return conversation_id
 
-    answer = chat_result["answer"]
-    new_conv_id = chat_result["conversation_id"]
-
     rag_time = time.time() - rag_start
-    logger.info(f"[Turn] RAG: {rag_time:.2f}s → '{answer[:80]}...'")
+    logger.info(f"[Turn] RAG stream: {rag_time:.2f}s -> '{answer[:80]}...'")
 
-    # Send the text answer immediately (so user sees it even if TTS fails)
     await websocket.send_json({
         "type": "answer",
         "text": answer,
         "conversation_id": new_conv_id,
     })
 
-    # ── 3. TTS — sentence-by-sentence streaming ──
-    await websocket.send_json({"type": "status", "message": "Speaking..."})
-    tts_start = time.time()
-
-    sentences = split_into_sentences(answer)
-    total_sentences = len(sentences)
-
-    if total_sentences == 0:
-        logger.warning("[Turn] No sentences to synthesize")
-        await websocket.send_json({"type": "speaking_done"})
-        total_time = time.time() - turn_start
-        logger.info(f"[Turn] Complete in {total_time:.2f}s (no TTS)")
-        return new_conv_id
-
-    logger.info(f"[Turn] TTS: {total_sentences} sentence group(s) to synthesize")
-
-    # Re-check TTS health before starting synthesis
-    tts_available = await check_tts_health()
-    if not tts_available:
-        logger.warning("[Turn] TTS service unavailable — skipping audio synthesis")
-        await websocket.send_json({"type": "speaking_done"})
-        total_time = time.time() - turn_start
-        logger.info(f"[Turn] Complete in {total_time:.2f}s (TTS unavailable)")
-        return new_conv_id
-
-    successful_chunks = 0
-    for idx, sentence in enumerate(sentences):
-        try:
-            audio_bytes_out = await asyncio.wait_for(
-                synthesize_speech(sentence),
-                timeout=_TTS_CHUNK_TIMEOUT_SEC,
-            )
-            if audio_bytes_out and len(audio_bytes_out) > 44:  # WAV header is 44 bytes
-                b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
-                await websocket.send_json({
-                    "type": "audio_chunk",
-                    "data": b64_audio,
-                    "index": idx + 1,
-                    "total": total_sentences,
-                })
-                successful_chunks += 1
-                logger.info(f"[Turn] TTS chunk {idx + 1}/{total_sentences}: {len(audio_bytes_out)} bytes sent")
-            else:
-                logger.warning(f"[Turn] TTS chunk {idx + 1}/{total_sentences}: empty or too small")
-        except asyncio.TimeoutError:
-            logger.error(f"[Turn] TTS timed out at chunk {idx + 1}")
-            await websocket.send_json({
-                "type": "status",
-                "message": "Audio generation timed out for part of the response."
-            })
-            break
-        except httpx.ConnectError:
-            logger.error(f"[Turn] TTS connection failed at chunk {idx + 1}")
-            break  # Don't try remaining chunks if connection is down
-        except Exception as e:
-            logger.error(f"[Turn] TTS failed for chunk {idx + 1}: {e}")
-            # Continue with remaining sentences even if one fails
-
     tts_time = time.time() - tts_start
     total_time = time.time() - turn_start
     logger.info(
-        f"[Turn] TTS: {tts_time:.2f}s ({successful_chunks}/{total_sentences} chunks) | "
+        f"[Turn] Early TTS: {tts_time:.2f}s ({successful_chunks} chunks) | "
         f"Total turn: {total_time:.2f}s"
     )
 
-    # Always send speaking_done so the frontend can resume VAD
     await websocket.send_json({"type": "speaking_done"})
-
     return new_conv_id
 
 
@@ -529,9 +658,6 @@ async def voice_to_voice_stream(
     filename: str = "audio.wav",
     conversation_id: str | None = None,
 ):
-    """
-    Legacy streaming voice-to-voice pipeline over WebSocket.
-    Kept for backward compatibility with the old /voice/stream endpoint.
-    """
+    """Legacy streaming voice-to-voice pipeline over WebSocket."""
     await _process_voice_turn(websocket, audio_bytes, conversation_id)
     await websocket.send_json({"type": "done"})

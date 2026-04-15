@@ -48,6 +48,13 @@ export function useVoiceConversation() {
   const currentAnswerRef = useRef('');
   // Track whether we're connected to avoid race conditions
   const isConnectedRef = useRef(false);
+  // Per-utterance PCM capture refs (for low-latency WAV chunking)
+  const captureStreamRef = useRef(null);
+  const captureContextRef = useRef(null);
+  const captureSourceRef = useRef(null);
+  const captureProcessorRef = useRef(null);
+  const captureIntervalRef = useRef(null);
+  const captureBuffersRef = useRef([]);
 
   // ── Get or create AudioContext ──
   const getAudioContext = useCallback(() => {
@@ -69,7 +76,7 @@ export function useVoiceConversation() {
       try {
         vadRef.current.start();
         console.log('[VAD] Resumed listening');
-      } catch (e) {
+      } catch {
         // Already started — this is fine
       }
       setIsListening(true);
@@ -77,6 +84,195 @@ export function useVoiceConversation() {
       setStatusMessage('');
     }
   }, []);
+
+  // ── Utterance Audio Chunk Streaming (PCM -> WAV) ──
+  const blobToBase64 = useCallback((blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        if (!result || typeof result !== 'string') {
+          reject(new Error('Failed to encode audio chunk'));
+          return;
+        }
+        const base64 = result.split(',')[1] || '';
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('FileReader failed'));
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const float32ToWavBlob = useCallback((float32Array, sampleRate = 16000) => {
+    const numChannels = 1;
+    const bytesPerSample = 2;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = float32Array.length * bytesPerSample;
+    const headerSize = 44;
+    const buffer = new ArrayBuffer(headerSize + dataSize);
+    const view = new DataView(buffer);
+
+    const writeString = (offset, str) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, headerSize + dataSize - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bytesPerSample * 8, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    let offset = headerSize;
+    for (let i = 0; i < float32Array.length; i++) {
+      let s = Math.max(-1, Math.min(1, float32Array[i]));
+      s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      view.setInt16(offset, s, true);
+      offset += 2;
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  }, []);
+
+  const flushPcmBuffers = useCallback(async (force = false) => {
+    const chunks = captureBuffersRef.current;
+    if (!chunks.length) {
+      return;
+    }
+
+    let total = 0;
+    for (const chunk of chunks) {
+      total += chunk.length;
+    }
+
+    // Avoid ultra-tiny partial payloads unless we're forcing a final flush.
+    if (!force && total < 2048) {
+      return;
+    }
+
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    captureBuffersRef.current = [];
+
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    try {
+      const sampleRate = captureContextRef.current?.sampleRate || 16000;
+      const wavBlob = float32ToWavBlob(merged, sampleRate);
+      const base64 = await blobToBase64(wavBlob);
+      wsRef.current.send(JSON.stringify({
+        type: 'audio_chunk',
+        data: base64,
+      }));
+    } catch (err) {
+      console.error('[Stream] Failed to flush WAV chunk:', err);
+    }
+  }, [blobToBase64, float32ToWavBlob]);
+
+  const startSpeechChunkStreaming = useCallback(async () => {
+    if (captureProcessorRef.current) {
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 16000,
+      },
+    });
+    captureStreamRef.current = stream;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx({ sampleRate: 16000 });
+    captureContextRef.current = ctx;
+
+    const source = ctx.createMediaStreamSource(stream);
+    captureSourceRef.current = source;
+
+    const processor = ctx.createScriptProcessor(2048, 1, 1);
+    captureProcessorRef.current = processor;
+
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      captureBuffersRef.current.push(new Float32Array(input));
+    };
+
+    source.connect(processor);
+    processor.connect(ctx.destination);
+
+    captureIntervalRef.current = window.setInterval(() => {
+      flushPcmBuffers(false);
+    }, 300);
+  }, [flushPcmBuffers]);
+
+  const stopSpeechChunkStreaming = useCallback(async (commit = true) => {
+    if (captureIntervalRef.current) {
+      window.clearInterval(captureIntervalRef.current);
+      captureIntervalRef.current = null;
+    }
+
+    if (commit) {
+      await flushPcmBuffers(true);
+    } else {
+      captureBuffersRef.current = [];
+    }
+
+    if (captureProcessorRef.current) {
+      try {
+        captureProcessorRef.current.disconnect();
+      } catch (err) {
+        console.debug('[Stream] captureProcessor disconnect issue:', err);
+      }
+      captureProcessorRef.current.onaudioprocess = null;
+      captureProcessorRef.current = null;
+    }
+
+    if (captureSourceRef.current) {
+      try {
+        captureSourceRef.current.disconnect();
+      } catch (err) {
+        console.debug('[Stream] captureSource disconnect issue:', err);
+      }
+      captureSourceRef.current = null;
+    }
+
+    if (captureContextRef.current) {
+      try {
+        await captureContextRef.current.close();
+      } catch (err) {
+        console.debug('[Stream] captureContext close issue:', err);
+      }
+      captureContextRef.current = null;
+    }
+
+    if (captureStreamRef.current) {
+      captureStreamRef.current.getTracks().forEach((track) => track.stop());
+      captureStreamRef.current = null;
+    }
+    captureBuffersRef.current = [];
+
+    if (commit && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'audio_commit' }));
+    } else if (!commit && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'audio_discard' }));
+    }
+  }, [flushPcmBuffers]);
 
   // ── Audio Playback Queue (using AudioContext for reliability) ──
   const playNextInQueue = useCallback(() => {
@@ -177,69 +373,31 @@ export function useVoiceConversation() {
     }
   }, [playNextInQueue]);
 
-  // ── Convert Float32 PCM to WAV Blob ──
-  const float32ToWavBlob = useCallback((float32Array, sampleRate = 16000) => {
-    const numChannels = 1;
-    const bytesPerSample = 2; // 16-bit PCM
-    const blockAlign = numChannels * bytesPerSample;
-    const dataSize = float32Array.length * bytesPerSample;
-    const headerSize = 44;
-    const buffer = new ArrayBuffer(headerSize + dataSize);
-    const view = new DataView(buffer);
-
-    // WAV header
-    const writeString = (offset, str) => {
-      for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-      }
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, headerSize + dataSize - 8, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true); // Subchunk1Size
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * blockAlign, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bytesPerSample * 8, true);
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    // Convert float32 samples to int16
-    const offset = headerSize;
-    for (let i = 0; i < float32Array.length; i++) {
-      let s = Math.max(-1, Math.min(1, float32Array[i]));
-      s = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      view.setInt16(offset + i * 2, s, true);
-    }
-
-    return new Blob([buffer], { type: 'audio/wav' });
-  }, []);
-
   // ── Handle Speech End from VAD ──
-  const handleSpeechEnd = useCallback((audioFloat32) => {
+  const handleSpeechEnd = useCallback(async (audioFloat32) => {
     setIsUserTalking(false);
 
     // Don't process if already processing or playing
     if (isProcessingRef.current) {
       console.log('[VAD] Already processing, ignoring this utterance');
+      await stopSpeechChunkStreaming(false);
       return;
     }
     if (isPlayingRef.current) {
       console.log('[VAD] Still playing audio, ignoring this utterance');
+      await stopSpeechChunkStreaming(false);
       return;
     }
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.log('[VAD] WebSocket not open, ignoring');
+      await stopSpeechChunkStreaming(false);
       return;
     }
 
     // Check minimum speech length (~0.5 seconds at 16kHz)
     if (audioFloat32.length < 8000) {
       console.log(`[VAD] Speech too short (${(audioFloat32.length / 16000).toFixed(2)}s), ignoring`);
+      await stopSpeechChunkStreaming(false);
       return;
     }
 
@@ -254,55 +412,17 @@ export function useVoiceConversation() {
     isProcessingRef.current = true;
     setIsProcessing(true);
     setStatus('processing');
-    setStatusMessage('Processing your speech...');
+    setStatusMessage('Finalizing speech...');
 
-    // Convert float32 PCM to WAV blob
-    const wavBlob = float32ToWavBlob(audioFloat32, 16000);
-
-    // Read as base64, but use readAsArrayBuffer for reliability
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (!reader.result) {
-        console.error('[VAD] FileReader returned null');
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-        resumeVAD();
-        return;
-      }
-
-      // Convert ArrayBuffer to base64
-      const uint8 = new Uint8Array(reader.result);
-      let binaryStr = '';
-      // Process in chunks to avoid call stack overflow for large arrays
-      const chunkSize = 8192;
-      for (let i = 0; i < uint8.length; i += chunkSize) {
-        const slice = uint8.subarray(i, Math.min(i + chunkSize, uint8.length));
-        binaryStr += String.fromCharCode.apply(null, slice);
-      }
-      const base64 = btoa(binaryStr);
-
-      if (base64 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log(`[VAD] Sending audio: ${(base64.length * 0.75 / 1024).toFixed(0)}KB WAV`);
-        wsRef.current.send(JSON.stringify({
-          type: 'audio_complete',
-          data: base64,
-        }));
-      } else {
-        console.error('[VAD] Cannot send: WS closed or empty data');
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-        resumeVAD();
-      }
-    };
-    reader.onerror = (err) => {
-      console.error('[VAD] FileReader error:', err);
+    try {
+      await stopSpeechChunkStreaming(true);
+    } catch (err) {
+      console.error('[VAD] Failed to finalize streamed utterance:', err);
       isProcessingRef.current = false;
       setIsProcessing(false);
       resumeVAD();
-    };
-    // Use readAsArrayBuffer instead of readAsDataURL for reliability
-    reader.readAsArrayBuffer(wavBlob);
-  }, [float32ToWavBlob, resumeVAD]);
+    }
+  }, [resumeVAD, stopSpeechChunkStreaming]);
 
   // ── Load VAD bundle via script tag (avoids CJS/ESM issues with Vite) ──
   const ensureOnnxRuntimeGlobal = useCallback(async () => {
@@ -367,6 +487,9 @@ export function useVoiceConversation() {
         setStatus('listening');
         setStatusMessage('Listening...');
         setError(null);
+        startSpeechChunkStreaming().catch((err) => {
+          console.error('[Stream] Failed to start chunk streaming:', err);
+        });
       },
 
       onSpeechEnd: (audio) => {
@@ -378,6 +501,7 @@ export function useVoiceConversation() {
         // Speech was too short — VAD discarded it
         console.log('[VAD] Misfire (too short, ignored)');
         setIsUserTalking(false);
+        stopSpeechChunkStreaming(false).catch(() => {});
       },
     });
 
@@ -387,21 +511,29 @@ export function useVoiceConversation() {
     setIsListening(true);
     setStatus('listening');
     console.log('[VAD] Silero VAD initialized and listening');
-  }, [handleSpeechEnd, loadVADBundle, ensureOnnxRuntimeGlobal]);
+  }, [
+    handleSpeechEnd,
+    loadVADBundle,
+    ensureOnnxRuntimeGlobal,
+    startSpeechChunkStreaming,
+    stopSpeechChunkStreaming,
+  ]);
 
   const stopVAD = useCallback(async () => {
+    await stopSpeechChunkStreaming(false).catch(() => {});
+
     if (vadRef.current) {
       try {
         await vadRef.current.pause();
         await vadRef.current.destroy();
-      } catch (e) {
+      } catch {
         // Ignore cleanup errors
       }
       vadRef.current = null;
     }
     setIsListening(false);
     setIsUserTalking(false);
-  }, []);
+  }, [stopSpeechChunkStreaming]);
 
   // ── WebSocket Connection ──
   const connect = useCallback(async () => {
@@ -445,6 +577,12 @@ export function useVoiceConversation() {
             currentTranscriptionRef.current = msg.text || '';
             setCurrentTranscription(msg.text || '');
             setStatusMessage('Got it! Thinking...');
+            break;
+
+          case 'partial_transcription':
+            currentTranscriptionRef.current = msg.text || '';
+            setCurrentTranscription(msg.text || '');
+            setStatusMessage('Listening...');
             break;
 
           case 'answer':
