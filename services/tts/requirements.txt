@@ -6,3 +6,4 @@ uvicorn[standard]==0.34.2
 kokoro==0.9.4
 soundfile==0.13.1
 torch>=2.0.0
+transformers==4.57.6

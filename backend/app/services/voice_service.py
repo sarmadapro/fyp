@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 # Timeout for microservice calls (STT/TTS can be slow on first load)
 _TIMEOUT = httpx.Timeout(timeout=120.0, connect=10.0)
+_STT_TURN_TIMEOUT_SEC = 180.0
+_RAG_TURN_TIMEOUT_SEC = 90.0
+_TTS_CHUNK_TIMEOUT_SEC = 60.0
 
 # Shared async HTTP client (connection pooling, much faster than per-request)
 _http_client: httpx.AsyncClient | None = None
@@ -50,7 +53,7 @@ async def check_stt_health() -> bool:
     """Check if the STT microservice is reachable."""
     try:
         client = _get_http_client()
-        resp = await client.get(f"{settings.STT_SERVICE_URL}/health", timeout=5.0)
+        resp = await client.get(f"{settings.STT_SERVICE_URL}/health", timeout=10.0)
         return resp.status_code == 200
     except Exception as e:
         logger.warning(f"STT health check failed: {e}")
@@ -61,7 +64,7 @@ async def check_tts_health() -> bool:
     """Check if the TTS microservice is reachable."""
     try:
         client = _get_http_client()
-        resp = await client.get(f"{settings.TTS_SERVICE_URL}/health", timeout=5.0)
+        resp = await client.get(f"{settings.TTS_SERVICE_URL}/health", timeout=10.0)
         return resp.status_code == 200
     except Exception as e:
         logger.warning(f"TTS health check failed: {e}")
@@ -348,14 +351,39 @@ async def _process_voice_turn(
     stt_start = time.time()
 
     try:
-        transcription = await transcribe_audio(audio_bytes, "recording.wav")
+        transcription = await asyncio.wait_for(
+            transcribe_audio(audio_bytes, "recording.wav"),
+            timeout=_STT_TURN_TIMEOUT_SEC,
+        )
         user_text = transcription.get("text", "").strip()
+    except asyncio.TimeoutError:
+        logger.error("STT timed out while processing audio")
+        await websocket.send_json({
+            "type": "error",
+            "message": "Speech transcription timed out. Please try a shorter utterance."
+        })
+        return conversation_id
     except httpx.ConnectError:
         logger.error("STT service connection refused — is it running on port 8001?")
         await websocket.send_json({
             "type": "error",
             "message": "Can't reach speech-to-text service. Is it running?"
         })
+        return conversation_id
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code if e.response is not None else None
+        if status == 503:
+            logger.warning("STT model still initializing")
+            await websocket.send_json({
+                "type": "error",
+                "message": "Speech model is still loading. Please wait a bit and try again."
+            })
+        else:
+            logger.error(f"STT failed with HTTP status {status}: {e}")
+            await websocket.send_json({
+                "type": "error",
+                "message": "Speech transcription failed. Try speaking more clearly."
+            })
         return conversation_id
     except Exception as e:
         logger.error(f"STT failed: {e}")
@@ -388,7 +416,17 @@ async def _process_voice_turn(
     # the async event loop. Without this, the WebSocket would hang.
     loop = asyncio.get_event_loop()
     try:
-        chat_result = await loop.run_in_executor(None, chat, user_text, conversation_id)
+        chat_result = await asyncio.wait_for(
+            loop.run_in_executor(None, chat, user_text, conversation_id),
+            timeout=_RAG_TURN_TIMEOUT_SEC,
+        )
+    except asyncio.TimeoutError:
+        logger.error("RAG chat timed out")
+        await websocket.send_json({
+            "type": "error",
+            "message": "I took too long to generate a response. Please try again."
+        })
+        return conversation_id
     except Exception as e:
         logger.error(f"RAG chat failed: {e}\n{traceback.format_exc()}")
         await websocket.send_json({
@@ -438,7 +476,10 @@ async def _process_voice_turn(
     successful_chunks = 0
     for idx, sentence in enumerate(sentences):
         try:
-            audio_bytes_out = await synthesize_speech(sentence)
+            audio_bytes_out = await asyncio.wait_for(
+                synthesize_speech(sentence),
+                timeout=_TTS_CHUNK_TIMEOUT_SEC,
+            )
             if audio_bytes_out and len(audio_bytes_out) > 44:  # WAV header is 44 bytes
                 b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
                 await websocket.send_json({
@@ -451,6 +492,13 @@ async def _process_voice_turn(
                 logger.info(f"[Turn] TTS chunk {idx + 1}/{total_sentences}: {len(audio_bytes_out)} bytes sent")
             else:
                 logger.warning(f"[Turn] TTS chunk {idx + 1}/{total_sentences}: empty or too small")
+        except asyncio.TimeoutError:
+            logger.error(f"[Turn] TTS timed out at chunk {idx + 1}")
+            await websocket.send_json({
+                "type": "status",
+                "message": "Audio generation timed out for part of the response."
+            })
+            break
         except httpx.ConnectError:
             logger.error(f"[Turn] TTS connection failed at chunk {idx + 1}")
             break  # Don't try remaining chunks if connection is down

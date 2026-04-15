@@ -27,3 +27,6 @@ Thumbs.db
 # Models cache
 *.bin
 *.pt
+
+# Logs
+*.log
