@@ -1,0 +1,135 @@
+import { useState, useRef, useEffect } from 'react';
+import { Send, MessageCircle, Loader2 } from 'lucide-react';
+import { sendMessage } from '../api/client';
+
+export default function ChatPage() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
+  const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
+    const question = input.trim();
+    if (!question || loading) return;
+
+    // Add user message
+    setMessages((prev) => [...prev, { role: 'user', content: question }]);
+    setInput('');
+    setLoading(true);
+
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    try {
+      const result = await sendMessage(question, conversationId);
+      setConversationId(result.conversation_id);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: result.answer, sources: result.sources },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `Error: ${err.message}. Please check that the backend is running and a document is uploaded.`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleTextareaInput = (e) => {
+    setInput(e.target.value);
+    // Auto-resize
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  };
+
+  return (
+    <div className="chat-container">
+      {/* Messages Area */}
+      <div className="chat-messages">
+        {messages.length === 0 ? (
+          <div className="chat-empty">
+            <MessageCircle />
+            <h3>Start a Conversation</h3>
+            <p>
+              Ask questions about your uploaded document. The AI will answer
+              based on the document content.
+            </p>
+          </div>
+        ) : (
+          messages.map((msg, i) => (
+            <div key={i} className={`message ${msg.role}`}>
+              <div className="message-avatar">
+                {msg.role === 'assistant' ? 'AI' : 'You'}
+              </div>
+              <div className="message-content">
+                {msg.content}
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* Loading indicator */}
+        {loading && (
+          <div className="message assistant">
+            <div className="message-avatar">AI</div>
+            <div className="message-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className="spinner" />
+              <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                Thinking...
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="chat-input-container">
+        <div className="chat-input-wrapper">
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            value={input}
+            onChange={handleTextareaInput}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask a question about your document..."
+            disabled={loading}
+          />
+          <button
+            className="btn btn-primary btn-icon"
+            onClick={handleSend}
+            disabled={!input.trim() || loading}
+            title="Send message"
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

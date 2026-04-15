@@ -1,0 +1,8 @@
+# Core
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+
+# TTS
+kokoro==0.9.4
+soundfile==0.13.1
+torch>=2.0.0

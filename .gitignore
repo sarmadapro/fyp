@@ -1,0 +1,29 @@
+# Virtual environments
+**/venv/
+**/__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Data
+backend/data/uploads/*
+backend/data/indices/*
+!backend/data/uploads/.gitkeep
+!backend/data/indices/.gitkeep
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models cache
+*.bin
+*.pt
