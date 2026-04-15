@@ -10,9 +10,11 @@ import os
 import time
 import logging
 import tempfile
+from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +22,10 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# Load project-level .env so STT_* settings work when service is started standalone.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 app = FastAPI(
     title="STT Service",
@@ -35,7 +41,8 @@ app.add_middleware(
 )
 
 # ── Model Configuration ──────────────────────────────────────────────
-MODEL_SIZE = os.getenv("STT_MODEL_SIZE", "large-v3")
+# "small" is a practical default for CPU; override via STT_MODEL_SIZE in .env.
+MODEL_SIZE = os.getenv("STT_MODEL_SIZE", "small")
 DEVICE = os.getenv("STT_DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("STT_COMPUTE_TYPE", "int8")
 

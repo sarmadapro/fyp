@@ -305,6 +305,21 @@ export function useVoiceConversation() {
   }, [float32ToWavBlob, resumeVAD]);
 
   // ── Load VAD bundle via script tag (avoids CJS/ESM issues with Vite) ──
+  const ensureOnnxRuntimeGlobal = useCallback(async () => {
+    if (window.ort?.InferenceSession) {
+      return;
+    }
+
+    const ortModule = await import('onnxruntime-web');
+    const ort = ortModule?.default || ortModule;
+
+    if (!ort?.InferenceSession) {
+      throw new Error('Failed to load ONNX Runtime for VAD');
+    }
+
+    window.ort = ort;
+  }, []);
+
   const loadVADBundle = useCallback(() => {
     return new Promise((resolve, reject) => {
       // Already loaded?
@@ -329,6 +344,7 @@ export function useVoiceConversation() {
 
   // ── Initialize Silero VAD ──
   const startVAD = useCallback(async () => {
+    await ensureOnnxRuntimeGlobal();
     const MicVAD = await loadVADBundle();
 
     const vad = await MicVAD.new({
@@ -345,7 +361,7 @@ export function useVoiceConversation() {
       submitUserSpeechOnPause: true,  // Submit audio even if VAD is paused mid-speech
 
       onSpeechStart: () => {
-        console.log('[VAD] 🎤 Speech started');
+        console.log('[VAD] Speech started');
         setIsUserTalking(true);
         setIsListening(true);
         setStatus('listening');
@@ -354,7 +370,7 @@ export function useVoiceConversation() {
       },
 
       onSpeechEnd: (audio) => {
-        console.log('[VAD] 🔇 Speech ended');
+        console.log('[VAD] Speech ended');
         handleSpeechEnd(audio);
       },
 
@@ -370,8 +386,8 @@ export function useVoiceConversation() {
 
     setIsListening(true);
     setStatus('listening');
-    console.log('[VAD] ✓ Silero VAD initialized and listening');
-  }, [handleSpeechEnd, loadVADBundle]);
+    console.log('[VAD] Silero VAD initialized and listening');
+  }, [handleSpeechEnd, loadVADBundle, ensureOnnxRuntimeGlobal]);
 
   const stopVAD = useCallback(async () => {
     if (vadRef.current) {
@@ -517,7 +533,17 @@ export function useVoiceConversation() {
     console.log('[WS] ✓ Voice WebSocket connected');
 
     // Start Silero VAD
-    await startVAD();
+    try {
+      await startVAD();
+    } catch (err) {
+      const message = err?.message || 'Failed to initialize voice activity detection';
+      console.error('[VAD] Failed to initialize:', err);
+      setError(message);
+      setStatus('idle');
+      setStatusMessage(message);
+      ws.close();
+      throw new Error(message);
+    }
   }, [startVAD, stopVAD, enqueueAudio, getAudioContext, resumeVAD]);
 
   const disconnect = useCallback(() => {
