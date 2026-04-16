@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, Loader2 } from 'lucide-react';
+import { Send, MessageCircle, FileText, Image, Globe, Mic, Sparkles, X } from 'lucide-react';
 import { sendMessageStream } from '../api/client';
 
 export default function ChatPage() {
@@ -97,6 +97,13 @@ export default function ChatPage() {
 
   return (
     <div className="chat-container">
+      {/* Premium Header */}
+      <div className="chat-header">
+        <div className="chat-header-left"><Sparkles size={18} /></div>
+        <h2>New Chat</h2>
+        <div className="chat-header-right"><X size={18} /></div>
+      </div>
+      
       {/* Messages Area */}
       <div className="chat-messages">
         {messages.length === 0 && !streamingMessage ? (
@@ -113,7 +120,7 @@ export default function ChatPage() {
             {messages.map((msg, i) => (
               <div key={i} className={`message ${msg.role}`}>
                 <div className="message-avatar">
-                  {msg.role === 'assistant' ? 'AI' : 'You'}
+                  {msg.role === 'assistant' ? <img src="https://api.dicebear.com/7.x/bottts/svg?seed=AI" alt="AI" /> : <img src="https://api.dicebear.com/7.x/notionists/svg?seed=User" alt="You" />}
                 </div>
                 <div className="message-content">
                   {msg.content}
@@ -152,6 +159,12 @@ export default function ChatPage() {
 
       {/* Input Area */}
       <div className="chat-input-container">
+        <div className="chat-action-chips">
+          <button className="action-chip"><FileText size={14}/> Chat Files</button>
+          <button className="action-chip"><Image size={14}/> Images</button>
+          <button className="action-chip"><Globe size={14}/> Translate</button>
+          <button className="action-chip"><Mic size={14}/> Audio Chat</button>
+        </div>
         <div className="chat-input-wrapper">
           <textarea
             ref={textareaRef}

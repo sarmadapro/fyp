@@ -124,11 +124,10 @@ export default function App() {
       <div className="app-layout">
         {/* Sidebar */}
         <aside className="sidebar">
-          <div className="sidebar-brand">
+          <div className="sidebar-brand" title="VoiceRAG">
             <div className="sidebar-brand-icon">
               <Mic size={18} />
             </div>
-            <h1>VoiceRAG</h1>
           </div>
 
           <nav className="sidebar-nav">
@@ -139,9 +138,9 @@ export default function App() {
                   key={key}
                   className={`nav-item ${activePortalPage === key ? 'active' : ''}`}
                   onClick={() => setActivePortalPage(key)}
+                  title={page.label}
                 >
                   <Icon />
-                  {page.label}
                 </button>
               );
             })}
@@ -149,39 +148,21 @@ export default function App() {
 
           {/* Client Info */}
           {client && (
-            <div className="sidebar-client">
-              <div className="client-avatar">
+            <div className="sidebar-client" title={client.email} style={{ marginTop: 'auto', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+              <div className="client-avatar" style={{ margin: 0 }}>
                 {(client.company_name || client.email || '?')[0].toUpperCase()}
-              </div>
-              <div className="client-info">
-                <div className="client-name">{client.company_name || 'My Portal'}</div>
-                <div className="client-email">{client.email}</div>
               </div>
             </div>
           )}
 
-          {/* Document Status */}
-          <div className="doc-status">
-            <div className="doc-status-label">Knowledge Base</div>
-            {docStatus?.has_document ? (
-              <>
-                <div className="doc-status-name">
-                  <FileText size={14} style={{ display: 'inline', marginRight: '0.25rem', verticalAlign: 'middle' }} />
-                  {docStatus.document_name}
-                </div>
-                <div className="doc-status-meta">
-                  {docStatus.chunk_count} chunks • Ready
-                </div>
-              </>
-            ) : (
-              <div className="doc-status-empty">No document uploaded</div>
-            )}
+          {/* Document Status Collapsed */}
+          <div className="doc-status-icon" title={docStatus?.has_document ? `Ready: ${docStatus.document_name}` : "No document"} style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem', color: docStatus?.has_document ? 'var(--accent-primary)' : 'var(--text-tertiary)' }}>
+             <FileText size={20} />
           </div>
 
           {/* Logout */}
-          <button className="sidebar-logout" onClick={handleLogout}>
+          <button className="sidebar-logout" onClick={handleLogout} title="Sign Out" style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem', width: '44px', borderRadius: '50%', background: 'transparent' }}>
             <LogOut size={16} />
-            Sign Out
           </button>
         </aside>
 

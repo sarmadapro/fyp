@@ -1,130 +1,131 @@
-import { Mic, Zap, Shield, BarChart3, ArrowRight, MessageCircle, Upload, Code, Globe } from 'lucide-react';
+import { Mic, Zap, Shield, BarChart3, ArrowRight, Code, Globe, ChevronDown, Database } from 'lucide-react';
 
 export default function LandingPage({ onNavigate }) {
   return (
-    <div className="landing">
+    <div className="pro-landing">
+      {/* Background Glow */}
+      <div className="glow-bg" />
+
       {/* Navigation */}
-      <nav className="landing-nav">
-        <div className="landing-nav-inner">
-          <div className="landing-brand">
+      <nav className="pro-landing-nav">
+        <div className="pro-nav-container">
+          <div className="landing-brand" style={{ cursor: 'pointer' }} onClick={() => window.scrollTo(0, 0)}>
             <div className="landing-brand-icon"><Mic size={18} /></div>
             <span>VoiceRAG</span>
           </div>
+          <div className="pro-nav-menu">
+            <span className="pro-nav-item">Features <ChevronDown size={14}/></span>
+            <span className="pro-nav-item" onClick={() => onNavigate('pipeline')}>How it Works</span>
+            <span className="pro-nav-item">Pricing</span>
+            <span className="pro-nav-item">Resources <ChevronDown size={14}/></span>
+          </div>
           <div className="landing-nav-links">
-            <button onClick={() => onNavigate('pipeline')} className="landing-nav-link">How It Works</button>
-            <button onClick={() => onNavigate('auth')} className="btn btn-primary btn-sm">Get Started</button>
+            <button onClick={() => onNavigate('auth')} className="pro-nav-item" style={{ background: 'none', border:'none' }}>Sign In</button>
+            <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary" style={{ padding: '8px 16px', fontSize: '13px' }}>Deploy Now</button>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="landing-hero">
-        <div className="landing-hero-badge">
-          <Zap size={14} /> AI-Powered RAG Platform
+      {/* Hero Section */}
+      <section className="pro-hero">
+        <div className="pro-hero-badge">
+          <span>New</span> VoiceRAG 2.0 is now available
         </div>
-        <h1>Deploy an AI Assistant<br /><span className="gradient-text">Trained on Your Data</span></h1>
-        <p className="landing-hero-sub">
-          Upload your documents. Get an embeddable chat widget.
-          Your customers get instant, accurate answers — powered by your knowledge base.
+        <h1 className="pro-hero-title">
+          Build AI Voice Agents<br/>Trained on Your Data.
+        </h1>
+        <p className="pro-hero-subtitle">
+          Instantly deploy an intelligent, ultra-fast RAG assistant to your website. Forget hallucination—our state-of-the-art Voice-to-Voice LLM pipeline provides accurate answers strictly from your knowledge base.
         </p>
-        <div className="landing-hero-actions">
-          <button onClick={() => onNavigate('auth')} className="btn btn-primary btn-lg">
-            Start Free <ArrowRight size={16} />
+        <div className="pro-hero-actions">
+          <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary">
+            Start Building Free <ArrowRight size={18} />
           </button>
-          <button onClick={() => onNavigate('pipeline')} className="btn btn-secondary btn-lg">
-            See How It Works
+          <button onClick={() => onNavigate('pipeline')} className="pro-btn pro-btn-secondary">
+            See Pipeline Architecture
           </button>
         </div>
-        <div className="landing-hero-stats">
-          <div className="hero-stat">
-            <span className="hero-stat-value">&lt;2s</span>
-            <span className="hero-stat-label">Response Time</span>
+        
+        {/* Mockup Image */}
+        <div className="pro-hero-visual">
+          <img src="/hero_dashboard.png" alt="VoiceRAG Dashboard Overview" />
+        </div>
+      </section>
+
+      {/* Trusted By Segment */}
+      <section className="logo-cloud">
+        <p>Trusted by forward-thinking teams globally</p>
+        <div className="logos">
+          <div className="logo-placeholder"><Code size={24}/> Acme Corp</div>
+          <div className="logo-placeholder"><Globe size={24}/> GlobalScale</div>
+          <div className="logo-placeholder"><Shield size={24}/> SecureTech</div>
+          <div className="logo-placeholder"><Zap size={24}/> FlashUI</div>
+        </div>
+      </section>
+
+      {/* Bento Grid Features */}
+      <section className="bento-section">
+        <div className="bento-header">
+          <h2>Everything you need. Out of the box.</h2>
+          <p>A unified conversational platform designed for pristine accuracy and raw performance.</p>
+        </div>
+        
+        <div className="bento-grid">
+          {/* Card 1: RAG Accuracy (Large) */}
+          <div className="bento-card bento-large" style={{ paddingBottom: '200px' }}>
+            <div className="bento-icon"><Database size={24}/></div>
+            <h3>Intelligent RAG Retrieval</h3>
+            <p style={{ position: 'relative', zIndex: 10 }}>We chunk, embed, and index your documents securely. The AI will strictly reference these vectors, ensuring zero hallucinations and perfect citations.</p>
+            <img src="/bento_fast.png" className="bento-image" style={{ width: '130%', right: '-15%', bottom: '-70%', opacity: 0.15, mixBlendMode: 'multiply', pointerEvents: 'none' }} alt="" />
           </div>
-          <div className="hero-stat-divider" />
-          <div className="hero-stat">
-            <span className="hero-stat-value">RAG</span>
-            <span className="hero-stat-label">Powered Retrieval</span>
+
+          {/* Card 2: Ultra Fast Voice */}
+          <div className="bento-card" style={{ paddingBottom: '200px' }}>
+            <div className="bento-icon"><Mic size={24}/></div>
+            <h3>Real-Time Voice UI</h3>
+            <p style={{ position: 'relative', zIndex: 10 }}>Utilizing Kokoro TTS and Faster Whisper, enable instantaneous voice-to-voice communication for your visitors.</p>
+            <img src="/bento_voice.png" className="bento-image" style={{ bottom: '-80%', right: '-60%', width: '220%', opacity: 0.15, mixBlendMode: 'multiply', pointerEvents: 'none' }} alt="" />
           </div>
-          <div className="hero-stat-divider" />
-          <div className="hero-stat">
-            <span className="hero-stat-value">1-Click</span>
-            <span className="hero-stat-label">Widget Deploy</span>
+
+          {/* Card 3: Deep Analytics */}
+          <div className="bento-card">
+            <div className="bento-icon"><BarChart3 size={24}/></div>
+            <h3>Advanced Analytics</h3>
+            <p style={{ position: 'relative', zIndex: 10 }}>Gain unbridled visibility into latency, system failures, and user interactions within the dashboard. Track tokens precisely.</p>
+          </div>
+
+          {/* Card 4: Widget Integration (Large) */}
+          <div className="bento-card bento-large" style={{ paddingBottom: '160px' }}>
+            <div className="bento-icon"><Code size={24}/></div>
+            <h3>1-Click Widget Deployment</h3>
+            <p style={{ position: 'relative', zIndex: 10 }}>Generate isolated API credentials instantly, and copy just one line of JavaScript to deploy the bot floating exactly where you need it on your site.</p>
+            <img src="/hero_dashboard.png" className="bento-image" style={{ width: '100%', right: '0%', bottom: '-60%', opacity: 0.15, mixBlendMode: 'multiply', pointerEvents: 'none' }} alt="" />
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="landing-section">
-        <h2>How It Works</h2>
-        <p className="section-sub">Three steps to your own AI assistant</p>
-        <div className="landing-steps">
-          <div className="landing-step">
-            <div className="step-number">1</div>
-            <div className="step-icon"><Upload size={24} /></div>
-            <h3>Upload Documents</h3>
-            <p>Upload PDFs, DOCX, or TXT files. We chunk, embed, and index them in a vector database dedicated to your account.</p>
-          </div>
-          <div className="step-arrow"><ArrowRight size={20} /></div>
-          <div className="landing-step">
-            <div className="step-number">2</div>
-            <div className="step-icon"><Code size={24} /></div>
-            <h3>Get Your Widget</h3>
-            <p>We generate a unique API key and embeddable chat widget. Just copy one line of code into your website.</p>
-          </div>
-          <div className="step-arrow"><ArrowRight size={20} /></div>
-          <div className="landing-step">
-            <div className="step-number">3</div>
-            <div className="step-icon"><Globe size={24} /></div>
-            <h3>Go Live</h3>
-            <p>Your visitors get instant AI-powered answers from your knowledge base. Track everything in your analytics dashboard.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="landing-section features-section">
-        <h2>Why VoiceRAG</h2>
-        <p className="section-sub">Built for performance, security, and simplicity</p>
-        <div className="landing-features">
-          <div className="feature-card">
-            <div className="feature-icon"><Zap size={22} /></div>
-            <h3>Ultra-Fast Inference</h3>
-            <p>Powered by Groq's hardware-accelerated LLM inference. Get answers in milliseconds, not seconds.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon"><Shield size={22} /></div>
-            <h3>Isolated Per-Client</h3>
-            <p>Every client gets their own vector database. Your data is completely isolated — no cross-contamination.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon"><BarChart3 size={22} /></div>
-            <h3>Full Analytics</h3>
-            <p>See every conversation, latency breakdown, and error. Know exactly how your assistant is performing.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon"><MessageCircle size={22} /></div>
-            <h3>Chat + Voice</h3>
-            <p>Text and voice modes. Real-time speech-to-speech powered by Faster-Whisper and Kokoro TTS.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="landing-cta">
-        <h2>Ready to Deploy Your AI Assistant?</h2>
-        <p>Create your account in 30 seconds. No credit card required.</p>
-        <button onClick={() => onNavigate('auth')} className="btn btn-primary btn-lg">
-          Get Started Free <ArrowRight size={16} />
+      {/* Call to Action */}
+      <section className="pro-cta">
+        <h2>Ready to deploy your agent?</h2>
+        <p className="pro-hero-subtitle" style={{ maxWidth: '100%', marginBottom: '32px' }}>
+          Join thousands of modern teams delivering magical customer experiences.
+        </p>
+        <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary" style={{ padding: '16px 32px', fontSize: '16px' }}>
+          Get Started For Free <ArrowRight size={18} />
         </button>
       </section>
 
       {/* Footer */}
-      <footer className="landing-footer">
+      <footer className="pro-footer">
         <div className="landing-brand">
           <div className="landing-brand-icon"><Mic size={14} /></div>
           <span>VoiceRAG</span>
         </div>
-        <p>© 2024 VoiceRAG. Intelligent document assistants.</p>
+        <div>
+          <span style={{ marginRight: '24px', cursor: 'pointer' }}>Privacy Policy</span>
+          <span style={{ marginRight: '24px', cursor: 'pointer' }}>Terms of Service</span>
+          <span>© 2026 VoiceRAG Inc.</span>
+        </div>
       </footer>
     </div>
   );
