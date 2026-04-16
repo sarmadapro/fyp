@@ -135,3 +135,24 @@ export async function voiceChat(audioBlob, conversationId = null) {
 
   return response.json();
 }
+
+// ─── Analytics ──────────────────────────────────────────────────────
+export async function getAnalyticsConversations(mode = null, status = null, limit = 100, offset = 0) {
+  const params = new URLSearchParams();
+  if (mode) params.set('mode', mode);
+  if (status) params.set('status', status);
+  params.set('limit', limit.toString());
+  params.set('offset', offset.toString());
+  const res = await request(`/analytics/conversations?${params.toString()}`);
+  return res.json();
+}
+
+export async function getAnalyticsSummary() {
+  const res = await request('/analytics/summary');
+  return res.json();
+}
+
+export async function clearAnalytics() {
+  const res = await request('/analytics/clear', { method: 'DELETE' });
+  return res.json();
+}

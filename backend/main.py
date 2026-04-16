@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.api.documents import router as document_router
 from app.api.chat import router as chat_router
 from app.api.voice import router as voice_router
+from app.api.analytics import router as analytics_router
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,7 @@ app.add_middleware(
 app.include_router(document_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
+app.include_router(analytics_router)
 
 
 @app.get("/health")

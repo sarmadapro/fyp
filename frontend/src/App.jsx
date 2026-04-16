@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Upload, MessageCircle, Mic, FileText } from 'lucide-react';
+import { Upload, MessageCircle, Mic, FileText, BarChart3 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import UploadPage from './pages/UploadPage';
 import ChatPage from './pages/ChatPage';
 import VoicePage from './pages/VoicePage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import { getDocumentStatus } from './api/client';
 
 const PAGES = {
   upload: { label: 'Upload', icon: Upload, component: UploadPage },
   chat: { label: 'Chat', icon: MessageCircle, component: ChatPage },
   voice: { label: 'Voice', icon: Mic, component: VoicePage },
+  analytics: { label: 'Analytics', icon: BarChart3, component: AnalyticsPage },
 };
 
 export default function App() {

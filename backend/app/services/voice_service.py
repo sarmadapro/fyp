@@ -16,6 +16,7 @@ from fastapi import WebSocket
 
 from app.core.config import settings
 from app.services.chat_service import chat, chat_stream
+from app.services.analytics_service import start_trace, mark, record_error, finish_trace
 
 logger = logging.getLogger(__name__)
 
@@ -465,9 +466,12 @@ async def _process_voice_turn(
     """
     turn_start = time.time()
 
+    # Start analytics trace for this voice turn
+    trace_id = start_trace(conversation_id or "", mode="voice", user_query="[audio]")
+
     # 1) STT
     await websocket.send_json({"type": "status", "message": "Transcribing..."})
-    stt_start = time.time()
+    mark(trace_id, "stt", "start")
 
     try:
         transcription = await asyncio.wait_for(
@@ -475,7 +479,11 @@ async def _process_voice_turn(
             timeout=_STT_TURN_TIMEOUT_SEC,
         )
         user_text = transcription.get("text", "").strip()
+        mark(trace_id, "stt", "end")
     except asyncio.TimeoutError:
+        mark(trace_id, "stt", "end")
+        record_error(trace_id, "STT timed out")
+        finish_trace(trace_id, ai_response="")
         logger.error("STT timed out while processing audio")
         await websocket.send_json({
             "type": "error",
@@ -483,6 +491,9 @@ async def _process_voice_turn(
         })
         return conversation_id
     except httpx.ConnectError:
+        mark(trace_id, "stt", "end")
+        record_error(trace_id, "STT service connection refused")
+        finish_trace(trace_id, ai_response="")
         logger.error("STT service connection refused - is it running on port 8001?")
         await websocket.send_json({
             "type": "error",
@@ -490,7 +501,10 @@ async def _process_voice_turn(
         })
         return conversation_id
     except httpx.HTTPStatusError as e:
+        mark(trace_id, "stt", "end")
         status = e.response.status_code if e.response is not None else None
+        record_error(trace_id, f"STT HTTP error {status}")
+        finish_trace(trace_id, ai_response="")
         if status == 503:
             logger.warning("STT model still initializing")
             await websocket.send_json({
@@ -505,6 +519,9 @@ async def _process_voice_turn(
             })
         return conversation_id
     except Exception as e:
+        mark(trace_id, "stt", "end")
+        record_error(trace_id, f"STT failed: {e}")
+        finish_trace(trace_id, ai_response="")
         logger.error(f"STT failed: {e}")
         await websocket.send_json({
             "type": "error",
@@ -512,22 +529,28 @@ async def _process_voice_turn(
         })
         return conversation_id
 
-    stt_time = time.time() - stt_start
+    stt_time = time.time() - turn_start
     logger.info(f"[Turn] STT: {stt_time:.2f}s -> '{user_text}'")
 
     if not user_text:
+        record_error(trace_id, "Empty transcription")
+        finish_trace(trace_id, ai_response="")
         await websocket.send_json({
             "type": "error",
             "message": "Couldn't catch that - try speaking more clearly."
         })
         return conversation_id
 
+    # Update the trace with the actual user text
+    from app.services.analytics_service import _active_traces
+    if trace_id in _active_traces:
+        _active_traces[trace_id]["user_query"] = user_text
+
     await websocket.send_json({"type": "transcription", "text": user_text})
 
     # 2) RAG stream + 3) Early TTS
     await websocket.send_json({"type": "status", "message": "Thinking..."})
     rag_start = time.time()
-    tts_start = time.time()
 
     tts_available = await check_tts_health()
     if tts_available:
@@ -540,6 +563,7 @@ async def _process_voice_turn(
     buffer = ""
     successful_chunks = 0
     chunk_index = 0
+    first_tts_done = False
 
     try:
         stream = chat_stream(user_text, conversation_id)
@@ -565,12 +589,18 @@ async def _process_voice_turn(
                     if not tts_available:
                         continue
 
+                    if not first_tts_done:
+                        mark(trace_id, "tts", "start")
+
                     try:
                         audio_bytes_out = await asyncio.wait_for(
                             synthesize_speech(sentence),
                             timeout=_TTS_CHUNK_TIMEOUT_SEC,
                         )
                         if audio_bytes_out and len(audio_bytes_out) > 44:
+                            if not first_tts_done:
+                                mark(trace_id, "tts", "end")
+                                first_tts_done = True
                             chunk_index += 1
                             b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
                             await websocket.send_json({
@@ -582,8 +612,16 @@ async def _process_voice_turn(
                             successful_chunks += 1
                             logger.info(f"[Turn] Early TTS chunk {chunk_index}: {len(audio_bytes_out)} bytes sent")
                     except asyncio.TimeoutError:
+                        if not first_tts_done:
+                            mark(trace_id, "tts", "end")
+                            first_tts_done = True
+                        record_error(trace_id, f"TTS timed out at chunk {chunk_index + 1}")
                         logger.error(f"[Turn] TTS timed out at early chunk {chunk_index + 1}")
                     except Exception as e:
+                        if not first_tts_done:
+                            mark(trace_id, "tts", "end")
+                            first_tts_done = True
+                        record_error(trace_id, f"TTS failed: {e}")
                         logger.error(f"[Turn] Early TTS failed: {e}")
 
             elif event_type == "done":
@@ -611,9 +649,12 @@ async def _process_voice_turn(
                     successful_chunks += 1
                     logger.info(f"[Turn] Final TTS chunk {chunk_index}: {len(audio_bytes_out)} bytes sent")
             except Exception as e:
+                record_error(trace_id, f"Final TTS chunk failed: {e}")
                 logger.error(f"[Turn] Final TTS chunk failed: {e}")
 
     except asyncio.TimeoutError:
+        record_error(trace_id, "RAG stream timed out")
+        finish_trace(trace_id, ai_response=answer)
         logger.error("RAG stream timed out")
         await websocket.send_json({
             "type": "error",
@@ -621,6 +662,8 @@ async def _process_voice_turn(
         })
         return conversation_id
     except Exception as e:
+        record_error(trace_id, f"RAG streaming failed: {e}")
+        finish_trace(trace_id, ai_response=answer)
         logger.error(f"RAG streaming failed: {e}\n{traceback.format_exc()}")
         await websocket.send_json({
             "type": "error",
@@ -637,12 +680,13 @@ async def _process_voice_turn(
         "conversation_id": new_conv_id,
     })
 
-    tts_time = time.time() - tts_start
     total_time = time.time() - turn_start
     logger.info(
-        f"[Turn] Early TTS: {tts_time:.2f}s ({successful_chunks} chunks) | "
-        f"Total turn: {total_time:.2f}s"
+        f"[Turn] Total turn: {total_time:.2f}s ({successful_chunks} TTS chunks)"
     )
+
+    # Finalize analytics trace
+    finish_trace(trace_id, ai_response=answer)
 
     await websocket.send_json({"type": "speaking_done"})
     return new_conv_id

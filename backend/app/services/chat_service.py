@@ -20,6 +20,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.core.config import settings
 from app.services.document_service import document_service
+from app.services.analytics_service import start_trace, mark, record_error, finish_trace
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +259,12 @@ def chat(question: str, conversation_id: str | None = None) -> dict:
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
+    # Start analytics trace
+    trace_id = start_trace(conversation_id, mode="chat", user_query=question)
+
     # Check if document is loaded
     if not document_service.has_document:
+        finish_trace(trace_id, ai_response="Hey! No document has been uploaded yet. Upload one and I'll be ready to help.")
         return {
             "answer": "Hey! No document has been uploaded yet. Upload one and I'll be ready to help.",
             "sources": [],
@@ -270,7 +275,9 @@ def chat(question: str, conversation_id: str | None = None) -> dict:
     retrieval_query = _build_augmented_query(question, conversation_id)
 
     # 2. Retrieve chunks — use generous top_k, we'll pass everything to the LLM
+    mark(trace_id, "retrieval", "start")
     search_results = document_service.similarity_search(retrieval_query, top_k=10)
+    mark(trace_id, "retrieval", "end")
 
     # 3. Format ALL context — no harsh score cutoff
     # We trust the LLM to reason about relevance
@@ -293,6 +300,7 @@ def chat(question: str, conversation_id: str | None = None) -> dict:
     history = _conversation_history[conversation_id][-20:]
 
     # 7. Call LLM
+    mark(trace_id, "llm", "start")
     llm = _get_llm()
     chain = prompt | llm
 
@@ -304,8 +312,12 @@ def chat(question: str, conversation_id: str | None = None) -> dict:
             "question": question,  # Send original question, not augmented
         })
         answer = response.content
+        mark(trace_id, "llm", "end")
     except Exception as e:
+        mark(trace_id, "llm", "end")
+        record_error(trace_id, f"LLM call failed: {e}")
         logger.error(f"LLM call failed: {e}")
+        finish_trace(trace_id, ai_response="Sorry, something went wrong on my end. Could you try asking again?")
         return {
             "answer": "Sorry, something went wrong on my end. Could you try asking again?",
             "sources": [],
@@ -315,6 +327,9 @@ def chat(question: str, conversation_id: str | None = None) -> dict:
     # 8. Update conversation history
     _conversation_history[conversation_id].append(HumanMessage(content=question))
     _conversation_history[conversation_id].append(AIMessage(content=answer))
+
+    # Finalize analytics trace
+    finish_trace(trace_id, ai_response=answer)
 
     return {
         "answer": answer,
@@ -350,6 +365,9 @@ async def chat_stream(question: str, conversation_id: str | None = None):
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
+    # Start analytics trace
+    trace_id = start_trace(conversation_id, mode="chat", user_query=question)
+
     try:
         # Check if document is loaded
         if not document_service.has_document:
@@ -362,6 +380,7 @@ async def chat_stream(question: str, conversation_id: str | None = None):
                     "content": full_answer[i:i + 3],
                 }
 
+            finish_trace(trace_id, ai_response=full_answer)
             yield {
                 "type": "done",
                 "conversation_id": conversation_id,
@@ -374,7 +393,9 @@ async def chat_stream(question: str, conversation_id: str | None = None):
         retrieval_query = _build_augmented_query(question, conversation_id)
 
         # 2. Retrieve chunks — generous top_k, no harsh cutoff
+        mark(trace_id, "retrieval", "start")
         search_results = document_service.similarity_search(retrieval_query, top_k=10)
+        mark(trace_id, "retrieval", "end")
 
         # 3. Format ALL context
         context = _format_context(search_results)
@@ -405,6 +426,7 @@ async def chat_stream(question: str, conversation_id: str | None = None):
         # 7. Stream LLM response
         yield {"type": "status", "message": "Generating answer..."}
 
+        mark(trace_id, "llm", "start")
         llm = _get_llm()
         chain = prompt | llm
 
@@ -422,9 +444,14 @@ async def chat_stream(question: str, conversation_id: str | None = None):
                     "content": chunk.content,
                 }
 
+        mark(trace_id, "llm", "end")
+
         # 8. Update conversation history
         _conversation_history[conversation_id].append(HumanMessage(content=question))
         _conversation_history[conversation_id].append(AIMessage(content=full_answer))
+
+        # Finalize analytics trace
+        finish_trace(trace_id, ai_response=full_answer)
 
         # 9. Send completion
         yield {
@@ -434,6 +461,8 @@ async def chat_stream(question: str, conversation_id: str | None = None):
         }
 
     except Exception as e:
+        record_error(trace_id, f"Streaming chat error: {e}")
+        finish_trace(trace_id, ai_response="")
         logger.error(f"Streaming chat error: {e}")
         yield {
             "type": "error",
