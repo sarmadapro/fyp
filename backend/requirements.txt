@@ -7,7 +7,7 @@ pydantic==2.11.1
 
 # RAG Pipeline
 langchain==0.3.24
-langchain-groq==0.3.2
+langchain-openai==0.3.7
 langchain-community==0.3.21
 langchain-huggingface==0.1.2
 sentence-transformers==4.1.0

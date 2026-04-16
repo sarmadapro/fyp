@@ -14,7 +14,7 @@ import uuid
 import logging
 from collections import defaultdict
 
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -85,17 +85,17 @@ area — helpful, quick, honest, and never annoying.
 #  LLM and Helper Functions
 # ---------------------------------------------------------------------------
 
-def _get_llm() -> ChatGroq:
-    """Create a Groq LLM instance."""
-    if not settings.GROQ_API_KEY:
+def _get_llm() -> ChatOpenAI:
+    """Create a DeepSeek LLM instance via ChatOpenAI."""
+    if not settings.DEEPSEEK_API_KEY:
         raise ValueError(
-            "GROQ_API_KEY is not set. Please add your Groq API key to the .env file. "
-            "Get one free at https://console.groq.com"
+            "DEEPSEEK_API_KEY is not set. Please add your DeepSeek API key to the .env file."
         )
 
-    logger.info(f"Creating Groq LLM with model: {settings.LLM_MODEL}")
-    return ChatGroq(
-        api_key=settings.GROQ_API_KEY,
+    logger.info(f"Creating DeepSeek LLM with model: {settings.LLM_MODEL}")
+    return ChatOpenAI(
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com",
         model=settings.LLM_MODEL,
         temperature=settings.LLM_TEMPERATURE,
         max_tokens=settings.LLM_MAX_TOKENS,

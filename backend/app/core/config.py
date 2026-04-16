@@ -42,9 +42,9 @@ class Settings:
         "CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000"
     ).split(",")
 
-    # --- Groq LLM ---
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    # --- DeepSeek LLM ---
+    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-chat")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
@@ -68,11 +68,11 @@ class Settings:
         self.INDEX_DIR.mkdir(parents=True, exist_ok=True)
         
         # Validate critical settings
-        if not self.GROQ_API_KEY:
-            print("[CONFIG] WARNING: GROQ_API_KEY is not set!")
-            print("[CONFIG] Please add your Groq API key to the .env file")
+        if not self.DEEPSEEK_API_KEY or self.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+            print("[CONFIG] WARNING: DEEPSEEK_API_KEY is not set or using placeholder!")
+            print("[CONFIG] Please add your DeepSeek API key to the .env file")
         else:
-            print(f"[CONFIG] GROQ_API_KEY loaded: {self.GROQ_API_KEY[:20]}...")
+            print(f"[CONFIG] DEEPSEEK_API_KEY loaded: {self.DEEPSEEK_API_KEY[:10]}...")
 
 
 settings = Settings()

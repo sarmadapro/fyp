@@ -3305,3 +3305,104 @@ html, body, #root {
 .app-layout {
   display: flex !important;
 }
+
+
+/* --- POWERFUL NEO-MINIMALIST LIGHT THEME OVERRIDES --- */
+:root {
+  --bg-primary: #FAFAFA !important;
+  --surface-glass: rgba(255, 255, 255, 0.8) !important;
+  --bg-glass: rgba(255, 255, 255, 0.8) !important;
+  --bg-glass-hover: #FFFFFF !important;
+  
+  --text-primary: #09090B !important; 
+  --text-secondary: #52525B !important; 
+  --text-tertiary: #A1A1AA !important; 
+  
+  --accent-primary: #000000 !important; 
+  --accent-primary-soft: rgba(0, 0, 0, 0.05) !important;
+  --accent-primary-glow: rgba(0, 0, 0, 0.1) !important;
+  
+  --accent-secondary: #2563EB !important; 
+  --accent-secondary-soft: rgba(37, 99, 235, 0.08) !important;
+
+  --border-default: rgba(0, 0, 0, 0.08) !important;
+  --border-glass: rgba(0, 0, 0, 0.05) !important;
+  
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  --shadow-glass: 0 4px 24px rgba(0, 0, 0, 0.04) !important;
+  --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.08) !important;
+}
+
+body {
+  background-image: none !important;
+  background-color: var(--bg-primary) !important;
+}
+
+.pro-btn-primary, .btn-primary {
+  background: #000000 !important;
+  color: #FFFFFF !important;
+  border: 1px solid #000000 !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  transition: all 0.2s ease !important;
+}
+
+.pro-btn-primary:hover, .btn-primary:hover {
+  background: #18181B !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2) !important;
+  transform: translateY(-2px) !important;
+}
+
+.sidebar-brand-icon, .landing-brand-icon {
+  background: linear-gradient(135deg, #09090B, #27272A) !important;
+  color: white !important;
+}
+
+.bento-icon {
+  background: #F4F4F5 !important;
+  color: #09090B !important;
+  border: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+.message.user .message-content {
+  background: #09090B !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.nav-item.active {
+  background: #09090B !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15) !important;
+}
+
+.glow-bg {
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.06) 0%, transparent 60%) !important;
+}
+
+/* Enhancing input focuses for powerful interaction */
+.form-group input:focus, .chat-input-wrapper:focus-within {
+  border-color: #09090B !important;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Chat bubble avatar contrast */
+.message-avatar {
+  border: 1px solid rgba(0,0,0,0.1) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Typography refinement */
+h1, h2, h3, h4, .pro-hero-title {
+  color: #09090B !important;
+  letter-spacing: -0.03em !important;
+}
+
+.pro-hero-badge {
+  color: #09090B !important;
+  border-color: rgba(0,0,0,0.1) !important;
+}
+.pro-hero-badge span {
+  color: #2563EB !important; /* Keep the 'New' badge text an electric blue for pop */
+}

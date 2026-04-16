@@ -94,15 +94,14 @@ async def startup_event():
     logger.info(f"  Embedding:    {settings.EMBEDDING_MODEL}")
     
     # Validate critical configuration
-    if not settings.GROQ_API_KEY:
+    if not settings.DEEPSEEK_API_KEY or settings.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
         logger.error("=" * 60)
-        logger.error("CRITICAL ERROR: GROQ_API_KEY is not set!")
-        logger.error("Please add your Groq API key to the .env file")
-        logger.error("Get one free at: https://console.groq.com")
+        logger.error("CRITICAL ERROR: DEEPSEEK_API_KEY is not set or using placeholder!")
+        logger.error("Please add your actual DeepSeek API key to the .env file")
         logger.error("=" * 60)
-        raise ValueError("GROQ_API_KEY is required but not set in environment")
+        raise ValueError("DEEPSEEK_API_KEY is required but not set in environment")
     else:
-        logger.info(f"  Groq API Key: {settings.GROQ_API_KEY[:20]}... (loaded)")
+        logger.info(f"  DeepSeek API Key: {settings.DEEPSEEK_API_KEY[:10]}... (loaded)")
     
     logger.info("=" * 60)
 
