@@ -224,5 +224,134 @@ class DocumentService:
         ]
 
 
-# Singleton instance
+# Singleton instance (backward-compat for single-user mode)
 document_service = DocumentService()
+
+
+# ─── Multi-Tenant Document Service (SaaS) ──────────────────────────
+
+class ClientDocumentService(DocumentService):
+    """
+    Per-client document service with isolated storage.
+    Each client's data lives in data/clients/{client_id}/
+    """
+
+    # Class-level cache of embeddings (shared across all clients)
+    _shared_embeddings = None
+
+    def __init__(self, client_id: str):
+        self.client_id = client_id
+
+        # Per-client directories
+        base_dir = Path(os.getenv("CLIENT_DATA_DIR", "./data/clients"))
+        self._client_dir = base_dir / client_id
+        self._upload_dir = self._client_dir / "uploads"
+        self._index_dir = self._client_dir / "indices"
+
+        # Ensure directories exist
+        self._upload_dir.mkdir(parents=True, exist_ok=True)
+        self._index_dir.mkdir(parents=True, exist_ok=True)
+
+        # State
+        self._embeddings = None
+        self._vector_store = None
+        self._current_doc_name = None
+        self._current_doc_type = None
+        self._chunk_count = 0
+
+        self._text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=settings.CHUNK_SIZE,
+            chunk_overlap=settings.CHUNK_OVERLAP,
+            length_function=len,
+            separators=["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""],
+        )
+
+        self._try_load_existing_index()
+
+    @property
+    def upload_dir(self) -> Path:
+        return self._upload_dir
+
+    @property
+    def index_dir(self) -> Path:
+        return self._index_dir
+
+    @property
+    def embeddings(self) -> HuggingFaceEmbeddings:
+        """Share a single embedding model across all clients."""
+        if ClientDocumentService._shared_embeddings is None:
+            logger.info(f"Loading shared embedding model: {settings.EMBEDDING_MODEL}")
+            ClientDocumentService._shared_embeddings = HuggingFaceEmbeddings(
+                model_name=settings.EMBEDDING_MODEL,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+            logger.info("Shared embedding model loaded.")
+        return ClientDocumentService._shared_embeddings
+
+    def process_and_index(self, file_path: Path, file_name: str, file_type: str) -> int:
+        text = self.extract_text(file_path, file_type)
+        chunks = self._text_splitter.split_text(text)
+        if not chunks:
+            raise ValueError("Document produced no text chunks.")
+
+        logger.info(f"[Client {self.client_id}] Created {len(chunks)} chunks from {file_name}")
+
+        self._vector_store = FAISS.from_texts(
+            texts=chunks,
+            embedding=self.embeddings,
+            metadatas=[{"source": file_name, "chunk_index": i} for i, _ in enumerate(chunks)],
+        )
+
+        self._vector_store.save_local(str(self._index_dir))
+
+        self._current_doc_name = file_name
+        self._current_doc_type = file_type
+        self._chunk_count = len(chunks)
+
+        meta_path = self._index_dir / "doc_meta.txt"
+        meta_path.write_text(f"{file_name}\n{file_type}\n{len(chunks)}", encoding="utf-8")
+
+        logger.info(f"[Client {self.client_id}] FAISS index saved with {len(chunks)} vectors.")
+        return len(chunks)
+
+    def delete_document(self):
+        self._vector_store = None
+        self._current_doc_name = None
+        self._current_doc_type = None
+        self._chunk_count = 0
+
+        for f in self._upload_dir.iterdir():
+            if f.name != ".gitkeep":
+                if f.is_file():
+                    f.unlink()
+                elif f.is_dir():
+                    shutil.rmtree(f)
+
+        for f in self._index_dir.iterdir():
+            if f.name != ".gitkeep":
+                if f.is_file():
+                    f.unlink()
+                elif f.is_dir():
+                    shutil.rmtree(f)
+
+        logger.info(f"[Client {self.client_id}] Document and index deleted.")
+
+    def _try_load_existing_index(self):
+        index_path = self._index_dir / "index.faiss"
+        meta_path = self._index_dir / "doc_meta.txt"
+
+        if index_path.exists() and meta_path.exists():
+            try:
+                self._vector_store = FAISS.load_local(
+                    str(self._index_dir),
+                    self.embeddings,
+                    allow_dangerous_deserialization=True,
+                )
+                meta = meta_path.read_text(encoding="utf-8").strip().split("\n")
+                self._current_doc_name = meta[0]
+                self._current_doc_type = meta[1]
+                self._chunk_count = int(meta[2])
+                logger.info(f"[Client {self.client_id}] Loaded index: {self._current_doc_name}")
+            except Exception as e:
+                logger.warning(f"[Client {self.client_id}] Failed to load index: {e}")

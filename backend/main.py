@@ -1,22 +1,31 @@
 """
 Voice-to-Voice RAG AI Agent — Main FastAPI Application.
 
-This is the central backend server that orchestrates:
-- Document upload and RAG indexing
-- Text-based chat with the AI assistant
-- Voice-to-voice interaction via STT/TTS microservices
+SaaS Backend: Multi-tenant document RAG with authentication,
+API key management, embeddable widget, and analytics.
 """
 
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+from app.core.database import init_db
+
+# Routers — MVP
 from app.api.documents import router as document_router
 from app.api.chat import router as chat_router
 from app.api.voice import router as voice_router
 from app.api.analytics import router as analytics_router
+
+# Routers — SaaS
+from app.api.auth import router as auth_router
+from app.api.api_keys import router as api_keys_router
+from app.api.widget import router as widget_router
+from app.api.portal import router as portal_router
+from app.api.widget_embed import router as widget_embed_router
 
 # Configure logging
 logging.basicConfig(
@@ -28,14 +37,14 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="Voice RAG AI Agent",
-    description="Voice-to-voice AI assistant powered by RAG over your documents.",
-    version="1.0.0",
+    title="VoiceRAG SaaS Platform",
+    description="Multi-tenant voice-to-voice AI assistant powered by RAG.",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS middleware
+# CORS middleware — allow frontend origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -44,11 +53,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# ─── Register Routers ──────────────────────────────────────────────
+
+# MVP (single-user, backward-compat)
 app.include_router(document_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
 app.include_router(analytics_router)
+
+# SaaS
+app.include_router(auth_router)
+app.include_router(api_keys_router)
+app.include_router(widget_router)
+app.include_router(portal_router)
+app.include_router(widget_embed_router)
 
 
 @app.get("/health")
@@ -56,15 +74,19 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "service": "voice-rag-backend",
-        "version": "1.0.0",
+        "service": "voicerag-saas-backend",
+        "version": "2.0.0",
     }
 
 
 @app.on_event("startup")
 async def startup_event():
+    # Initialize database tables
+    init_db()
+    logger.info("[DB] Database initialized (tables created if needed)")
+
     logger.info("=" * 60)
-    logger.info("Voice RAG AI Agent — Backend Starting")
+    logger.info("VoiceRAG SaaS Platform — Backend Starting")
     logger.info(f"  CORS Origins: {settings.CORS_ORIGINS}")
     logger.info(f"  STT Service:  {settings.STT_SERVICE_URL}")
     logger.info(f"  TTS Service:  {settings.TTS_SERVICE_URL}")
