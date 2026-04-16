@@ -28,6 +28,23 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
+# Add CUDA DLLs to PATH for faster-whisper GPU support
+import sys
+
+if sys.platform == "win32":
+    venv_path = Path(__file__).resolve().parent / "venv"
+    cuda_paths = [
+        venv_path / "Lib" / "site-packages" / "nvidia" / "cublas" / "bin",
+        venv_path / "Lib" / "site-packages" / "nvidia" / "cudnn" / "bin",
+        venv_path / "Lib" / "site-packages" / "nvidia" / "cuda_nvrtc" / "bin",
+        venv_path / "Lib" / "site-packages" / "nvidia" / "cuda_runtime" / "bin",
+    ]
+    for cuda_path in cuda_paths:
+        if cuda_path.exists():
+            os.add_dll_directory(str(cuda_path))
+            os.environ["PATH"] = str(cuda_path) + os.pathsep + os.environ.get("PATH", "")
+            logger.info(f"Added CUDA DLL directory: {cuda_path}")
+
 # Use HTTP downloads instead of XET backend to reduce download fragility on some setups.
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
@@ -89,7 +106,9 @@ def get_model():
                     f"Falling back to model '{FALLBACK_MODEL_SIZE}' "
                     f"(device={DEVICE}, compute={COMPUTE_TYPE})"
                 )
-                _model = WhisperModel(FALLBACK_MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+                _model = WhisperModel(
+                    FALLBACK_MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE
+                )
                 logger.info("Fallback Faster-Whisper model loaded successfully.")
             else:
                 _model_error = str(e)

@@ -86,20 +86,32 @@ area — helpful, quick, honest, and never annoying.
 # ---------------------------------------------------------------------------
 
 def _get_llm() -> ChatOpenAI:
-    """Create a DeepSeek LLM instance via ChatOpenAI."""
-    if not settings.DEEPSEEK_API_KEY:
-        raise ValueError(
-            "DEEPSEEK_API_KEY is not set. Please add your DeepSeek API key to the .env file."
+    """Create an LLM instance (Ollama or DeepSeek) via ChatOpenAI."""
+    
+    if settings.LLM_PROVIDER == "ollama":
+        logger.info(f"Creating Ollama LLM with model: {settings.LLM_MODEL}")
+        return ChatOpenAI(
+            base_url=settings.OLLAMA_BASE_URL + "/v1",
+            api_key="ollama",  # Ollama doesn't require a real API key
+            model=settings.LLM_MODEL,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
         )
-
-    logger.info(f"Creating DeepSeek LLM with model: {settings.LLM_MODEL}")
-    return ChatOpenAI(
-        api_key=settings.DEEPSEEK_API_KEY,
-        base_url="https://api.deepseek.com",
-        model=settings.LLM_MODEL,
-        temperature=settings.LLM_TEMPERATURE,
-        max_tokens=settings.LLM_MAX_TOKENS,
-    )
+    elif settings.LLM_PROVIDER == "deepseek":
+        if not settings.DEEPSEEK_API_KEY:
+            raise ValueError(
+                "DEEPSEEK_API_KEY is not set. Please add your DeepSeek API key to the .env file."
+            )
+        logger.info(f"Creating DeepSeek LLM with model: {settings.LLM_MODEL}")
+        return ChatOpenAI(
+            api_key=settings.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com",
+            model=settings.LLM_MODEL,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+        )
+    else:
+        raise ValueError(f"Unknown LLM_PROVIDER: {settings.LLM_PROVIDER}. Use 'ollama' or 'deepseek'.")
 
 
 def _format_context(search_results: list[dict]) -> str:

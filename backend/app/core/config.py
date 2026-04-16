@@ -42,9 +42,11 @@ class Settings:
         "CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000"
     ).split(",")
 
-    # --- DeepSeek LLM ---
+    # --- LLM Configuration ---
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "deepseek"
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-chat")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama3.2:3b")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
@@ -68,11 +70,14 @@ class Settings:
         self.INDEX_DIR.mkdir(parents=True, exist_ok=True)
         
         # Validate critical settings
-        if not self.DEEPSEEK_API_KEY or self.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
-            print("[CONFIG] WARNING: DEEPSEEK_API_KEY is not set or using placeholder!")
-            print("[CONFIG] Please add your DeepSeek API key to the .env file")
-        else:
-            print(f"[CONFIG] DEEPSEEK_API_KEY loaded: {self.DEEPSEEK_API_KEY[:10]}...")
+        if self.LLM_PROVIDER == "deepseek":
+            if not self.DEEPSEEK_API_KEY or self.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+                print("[CONFIG] WARNING: DEEPSEEK_API_KEY is not set or using placeholder!")
+                print("[CONFIG] Please add your DeepSeek API key to the .env file")
+            else:
+                print(f"[CONFIG] DEEPSEEK_API_KEY loaded: {self.DEEPSEEK_API_KEY[:10]}...")
+        elif self.LLM_PROVIDER == "ollama":
+            print(f"[CONFIG] Using Ollama at: {self.OLLAMA_BASE_URL}")
 
 
 settings = Settings()
