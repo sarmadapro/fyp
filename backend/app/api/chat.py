@@ -36,6 +36,7 @@ async def chat_stream_endpoint(request: ChatRequest):
     Send a question and get a streaming AI-generated answer.
     Returns Server-Sent Events (SSE) for real-time streaming.
     """
+
     async def event_generator():
         try:
             async for chunk in chat_stream(
@@ -47,7 +48,7 @@ async def chat_stream_endpoint(request: ChatRequest):
         except Exception as e:
             logger.error(f"Streaming error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",

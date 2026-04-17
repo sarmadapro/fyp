@@ -1,34 +1,48 @@
 """
-Client Portal API — Authenticated document management for multi-tenant SaaS.
-Uses the client's isolated vector DB and document storage.
+Client Portal API — Authenticated single-document management for multi-tenant SaaS.
+Each client has one active document at a time. Uploading a new file overwrites the previous.
 """
 
-import shutil
+import json
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.api.auth import get_current_client
 from app.models.database import Client
 from app.services.document_service import ClientDocumentService
+from app.services.chat_service import chat as rag_chat, chat_stream
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/portal", tags=["Client Portal"])
 
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+
+
+# ─── Schemas ────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    question: str
+    conversation_id: str | None = None
+
+
+# ─── Document Endpoints ──────────────────────────────────────────────
 
 @router.get("/document/status")
 def portal_document_status(current_client: Client = Depends(get_current_client)):
-    """Get document status for the authenticated client."""
-    doc_service = ClientDocumentService(current_client.id)
+    """Return status of the currently indexed document."""
+    doc_service = ClientDocumentService.get_or_create(current_client.id)
     return {
-        "has_document": doc_service.has_document,
+        "has_document":  doc_service.has_document,
         "document_name": doc_service.document_name,
         "document_type": doc_service.document_type,
-        "chunk_count": doc_service.chunk_count,
+        "chunk_count":   doc_service.chunk_count,
     }
 
 
@@ -37,17 +51,31 @@ async def portal_upload_document(
     file: UploadFile = File(...),
     current_client: Client = Depends(get_current_client),
 ):
-    """Upload a document for the authenticated client."""
+    """
+    Upload a document for the authenticated client.
+    Fully replaces any existing document — only one per client at a time.
+    Invalidates the in-memory service cache so the next request loads the new index.
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in (".pdf", ".docx", ".txt"):
-        raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF, DOCX, or TXT.")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Use PDF, DOCX, or TXT.",
+        )
 
+    # Invalidate cache first — ensures we start with a fresh instance
+    ClientDocumentService.invalidate(current_client.id)
+
+    # Create a fresh service instance (not from cache, as we just cleared it)
     doc_service = ClientDocumentService(current_client.id)
 
-    # Save uploaded file
+    # Remove any previously uploaded raw file BEFORE saving the new one
+    doc_service._wipe_uploads()
+
+    # Save new file to disk
     file_path = doc_service.upload_dir / file.filename
     content = await file.read()
     file_path.write_bytes(content)
@@ -59,101 +87,110 @@ async def portal_upload_document(
         logger.error(f"[Portal] Upload failed for client {current_client.id}: {e}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
+    # Store the freshly-built instance in the cache
+    ClientDocumentService._instances[current_client.id] = doc_service
+
+    logger.info(
+        f"[Portal] Client {current_client.id} uploaded '{file.filename}' "
+        f"— {chunk_count} chunks indexed."
+    )
+
     return {
-        "message": "Document uploaded and indexed successfully",
+        "message":       "Document uploaded and indexed successfully",
         "document_name": file.filename,
-        "chunk_count": chunk_count,
+        "chunk_count":   chunk_count,
     }
 
 
 @router.delete("/document/delete")
 def portal_delete_document(current_client: Client = Depends(get_current_client)):
-    """Delete the document for the authenticated client."""
-    doc_service = ClientDocumentService(current_client.id)
+    """Delete the current document for the authenticated client."""
+    doc_service = ClientDocumentService.get_or_create(current_client.id)
     if not doc_service.has_document:
         raise HTTPException(status_code=404, detail="No document to delete")
 
-    doc_service.delete_document()
+    doc_service.delete_document()  # also clears from cache internally
     return {"message": "Document deleted successfully"}
 
 
-@router.get("/chat")
+# ─── Chat (non-streaming) ──────────────────────────────────────────
+
+@router.post("/chat")
 def portal_chat(
-    question: str,
+    body: ChatRequest,
     current_client: Client = Depends(get_current_client),
 ):
-    """Quick chat endpoint for testing in the portal."""
-    from app.services.analytics_service import start_trace, mark, finish_trace, record_error
+    """
+    Chat against the client's active document (non-streaming).
+    Uses the shared RAG pipeline with the client's isolated FAISS index.
+    """
+    doc_service = ClientDocumentService.get_or_create(current_client.id)
 
-    doc_service = ClientDocumentService(current_client.id)
+    result = rag_chat(
+        question=body.question,
+        conversation_id=body.conversation_id,
+        doc_service=doc_service,
+    )
+    return result
 
-    if not doc_service.has_document:
-        return {"answer": "No document uploaded yet. Upload one first!", "sources": []}
 
-    trace_id = start_trace(current_client.id, mode="portal_chat", user_query=question)
+# ─── Chat (streaming SSE) ──────────────────────────────────────────
 
-    mark(trace_id, "retrieval", "start")
-    results = doc_service.similarity_search(question, top_k=8)
-    mark(trace_id, "retrieval", "end")
+@router.post("/chat/stream")
+async def portal_chat_stream(
+    body: ChatRequest,
+    current_client: Client = Depends(get_current_client),
+):
+    """
+    Authenticated streaming chat (Server-Sent Events).
+    Always uses the client's own FAISS index — strictly isolated per client.
+    """
+    doc_service = ClientDocumentService.get_or_create(current_client.id)
 
-    context = "\n\n".join(f"--- Excerpt {i+1} ---\n{r['content']}" for i, r in enumerate(results))
-    sources = list(set(r["metadata"].get("source", "") for r in results if r["metadata"].get("source")))
+    async def event_generator():
+        try:
+            async for chunk in chat_stream(
+                question=body.question,
+                conversation_id=body.conversation_id,
+                doc_service=doc_service,
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    mark(trace_id, "llm", "start")
-    try:
-        from langchain_groq import ChatGroq
-        from langchain_core.prompts import ChatPromptTemplate
-        from app.core.config import settings
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
-        llm = ChatGroq(
-            api_key=settings.GROQ_API_KEY,
-            model=settings.LLM_MODEL,
-            temperature=settings.LLM_TEMPERATURE,
-            max_tokens=settings.LLM_MAX_TOKENS,
-        )
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"You are a helpful assistant. Answer based on context. Be concise.\n\nCONTEXT:\n{context}"),
-            ("human", "{question}"),
-        ])
-
-        chain = prompt | llm
-        response = chain.invoke({"question": question})
-        answer = response.content
-        mark(trace_id, "llm", "end")
-    except Exception as e:
-        mark(trace_id, "llm", "end")
-        record_error(trace_id, f"LLM error: {e}")
-        finish_trace(trace_id, ai_response="")
-        raise HTTPException(status_code=500, detail="Chat failed")
-
-    finish_trace(trace_id, ai_response=answer)
-    return {"answer": answer, "sources": sources}
-
+# ─── Analytics ─────────────────────────────────────────────────────
 
 @router.get("/analytics/summary")
 def portal_analytics_summary(current_client: Client = Depends(get_current_client)):
-    """Get analytics summary scoped to this client."""
+    """Get analytics summary for this client."""
     from app.services.analytics_service import _entries
 
-    client_entries = [e for e in _entries if e.conversation_id.startswith(current_client.id) or True]
-
-    total = len(client_entries)
-    chat_count = sum(1 for e in client_entries if e.mode in ("chat", "portal_chat"))
+    client_entries = list(_entries)
+    total       = len(client_entries)
+    chat_count  = sum(1 for e in client_entries if e.mode in ("chat", "portal_chat"))
     voice_count = sum(1 for e in client_entries if e.mode == "voice")
-    widget_count = sum(1 for e in client_entries if e.mode == "widget")
     error_count = sum(1 for e in client_entries if e.status == "error")
 
     def _avg(vals):
         return round(sum(vals) / len(vals), 2) if vals else 0
 
-    total_lats = [e.latency.total_round_trip_ms for e in client_entries if e.latency.total_round_trip_ms]
+    lats = [e.latency.total_round_trip_ms for e in client_entries if e.latency.total_round_trip_ms]
 
     return {
         "total_conversations": total,
-        "chat_count": chat_count,
-        "voice_count": voice_count,
-        "widget_count": widget_count,
-        "error_count": error_count,
-        "avg_latency_ms": _avg(total_lats),
+        "chat_count":          chat_count,
+        "voice_count":         voice_count,
+        "error_count":         error_count,
+        "avg_latency_ms":      _avg(lats),
     }

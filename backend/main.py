@@ -1,33 +1,31 @@
 """
-Voice-to-Voice RAG AI Agent — Main FastAPI Application.
+VoiceRAG SaaS Platform — FastAPI Backend.
 
-SaaS Backend: Multi-tenant document RAG with authentication,
-API key management, embeddable widget, and analytics.
+Multi-tenant voice-to-voice RAG with authentication, API key management,
+embeddable widget, and analytics.
 """
 
 import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import init_db
 
-# Routers — MVP
+# Routers — MVP (single-user, backward-compat)
 from app.api.documents import router as document_router
-from app.api.chat import router as chat_router
-from app.api.voice import router as voice_router
+from app.api.chat     import router as chat_router
+from app.api.voice    import router as voice_router
 from app.api.analytics import router as analytics_router
 
 # Routers — SaaS
-from app.api.auth import router as auth_router
-from app.api.api_keys import router as api_keys_router
-from app.api.widget import router as widget_router
-from app.api.portal import router as portal_router
+from app.api.auth        import router as auth_router
+from app.api.api_keys    import router as api_keys_router
+from app.api.widget      import router as widget_router
+from app.api.portal      import router as portal_router
 from app.api.widget_embed import router as widget_embed_router
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -35,16 +33,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
 app = FastAPI(
     title="VoiceRAG SaaS Platform",
     description="Multi-tenant voice-to-voice AI assistant powered by RAG.",
-    version="2.0.0",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS middleware — allow frontend origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -53,9 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Register Routers ──────────────────────────────────────────────
+# ─── Routers ──────────────────────────────────────────────────────────
 
-# MVP (single-user, backward-compat)
+# MVP
 app.include_router(document_router)
 app.include_router(chat_router)
 app.include_router(voice_router)
@@ -69,40 +65,32 @@ app.include_router(portal_router)
 app.include_router(widget_embed_router)
 
 
-@app.get("/health")
+# ─── Health ───────────────────────────────────────────────────────────
+
+@app.get("/health", tags=["System"])
 async def health_check():
-    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "voicerag-saas-backend",
-        "version": "2.0.0",
+        "version": "3.0.0",
+        "llm_provider": settings.LLM_PROVIDER,
+        "llm_model":    settings.LLM_MODEL,
     }
 
 
+# ─── Startup ──────────────────────────────────────────────────────────
+
 @app.on_event("startup")
 async def startup_event():
-    # Initialize database tables
     init_db()
-    logger.info("[DB] Database initialized (tables created if needed)")
 
     logger.info("=" * 60)
-    logger.info("VoiceRAG SaaS Platform — Backend Starting")
-    logger.info(f"  CORS Origins: {settings.CORS_ORIGINS}")
+    logger.info("VoiceRAG SaaS Platform v3.0 — Starting")
+    logger.info(f"  LLM Provider: {settings.LLM_PROVIDER} ({settings.LLM_MODEL})")
     logger.info(f"  STT Service:  {settings.STT_SERVICE_URL}")
     logger.info(f"  TTS Service:  {settings.TTS_SERVICE_URL}")
-    logger.info(f"  LLM Model:    {settings.LLM_MODEL}")
     logger.info(f"  Embedding:    {settings.EMBEDDING_MODEL}")
-    
-    # Validate critical configuration
-    if not settings.DEEPSEEK_API_KEY or settings.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
-        logger.error("=" * 60)
-        logger.error("CRITICAL ERROR: DEEPSEEK_API_KEY is not set or using placeholder!")
-        logger.error("Please add your actual DeepSeek API key to the .env file")
-        logger.error("=" * 60)
-        raise ValueError("DEEPSEEK_API_KEY is required but not set in environment")
-    else:
-        logger.info(f"  DeepSeek API Key: {settings.DEEPSEEK_API_KEY[:10]}... (loaded)")
-    
+    logger.info(f"  CORS Origins: {settings.CORS_ORIGINS}")
     logger.info("=" * 60)
 
 

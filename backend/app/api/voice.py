@@ -13,10 +13,22 @@ Endpoints:
 import logging
 import base64
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    Depends,
+    Query,
+)
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
+from app.core.database import get_db
 from app.models.schemas import TranscriptionResponse
+from app.services.auth_service import decode_access_token, get_client_by_id
 from app.services.voice_service import (
     transcribe_audio,
     synthesize_speech,
@@ -78,22 +90,47 @@ async def voice_chat_endpoint(
 
 
 @router.websocket("/conversation")
-async def voice_conversation_endpoint(websocket: WebSocket):
+async def voice_conversation_endpoint(
+    websocket: WebSocket,
+    token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     """
     Real-time conversational voice WebSocket.
 
-    The client streams mic audio chunks, the server detects silence,
-    transcribes, runs RAG, and streams back TTS audio sentence-by-sentence.
-
-    This is the primary endpoint for the voice page.
+    Requires a valid JWT in the ?token= query param so the server can
+    resolve the authenticated client and route RAG against that client's
+    isolated FAISS index. Anonymous connections are rejected.
     """
     await websocket.accept()
-    logger.info("Voice conversation WebSocket connected")
+
+    client = None
+    if token:
+        payload = decode_access_token(token)
+        if payload:
+            client_id = payload.get("sub")
+            if client_id:
+                resolved = get_client_by_id(db, client_id)
+                if resolved and resolved.is_active:
+                    client = resolved
+
+    if client is None:
+        logger.warning("Voice WS rejected: missing/invalid auth token")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Authentication required. Please log in again.",
+            })
+        finally:
+            await websocket.close(code=4401)
+        return
+
+    logger.info(f"Voice conversation WebSocket connected (client={client.id})")
 
     try:
-        await handle_voice_conversation(websocket)
+        await handle_voice_conversation(websocket, client=client)
     except WebSocketDisconnect:
-        logger.info("Voice conversation WebSocket disconnected")
+        logger.info(f"Voice conversation WebSocket disconnected (client={client.id})")
     except Exception as e:
         logger.error(f"Voice conversation error: {e}")
         try:

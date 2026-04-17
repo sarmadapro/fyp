@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { uploadDocument, deleteDocument, getDocumentStatus } from '../api/client';
+import { portalUploadDocument, portalDeleteDocument, portalDocumentStatus } from '../api/client';
 
 export default function UploadPage() {
   const [docStatus, setDocStatus] = useState(null);
@@ -11,7 +11,7 @@ export default function UploadPage() {
 
   const fetchDocStatus = async () => {
     try {
-      const status = await getDocumentStatus();
+      const status = await portalDocumentStatus();
       setDocStatus(status);
     } catch (err) {
       console.error('Failed to fetch doc status:', err);
@@ -26,7 +26,6 @@ export default function UploadPage() {
     if (acceptedFiles.length === 0) return;
     const file = acceptedFiles[0];
 
-    // Validate file type
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     if (!['.pdf', '.docx', '.txt'].includes(ext)) {
       toast.error('Unsupported file type. Please upload PDF, DOCX, or TXT.');
@@ -37,12 +36,11 @@ export default function UploadPage() {
     setUploadProgress(10);
 
     try {
-      // Simulate progress steps
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => Math.min(prev + 15, 85));
       }, 500);
 
-      const result = await uploadDocument(file);
+      const result = await portalUploadDocument(file);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -61,7 +59,7 @@ export default function UploadPage() {
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      await deleteDocument();
+      await portalDeleteDocument();
       toast.success('Document deleted');
       await fetchDocStatus();
     } catch (err) {
@@ -83,8 +81,15 @@ export default function UploadPage() {
   return (
     <>
       <div className="page-header">
-        <h2>Document Upload</h2>
-        <p>Upload a document to power your AI assistant with relevant knowledge</p>
+        <h2>Knowledge Base</h2>
+        <p>
+          Upload a document to power your AI assistant.
+          {docStatus?.has_document && (
+            <span style={{ color: 'var(--text-tertiary)', marginLeft: '0.5rem' }}>
+              · Uploading a new file will replace the current one.
+            </span>
+          )}
+        </p>
       </div>
       <div className="page-body">
         <div className="upload-container">
@@ -100,13 +105,15 @@ export default function UploadPage() {
             <h3>
               {isDragActive
                 ? 'Drop your file here'
-                : 'Drag & drop a document'}
+                : docStatus?.has_document
+                  ? 'Drop a new file to replace current document'
+                  : 'Drag & drop a document'}
             </h3>
             <p>
               or <span className="highlight">browse files</span>
             </p>
             <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Supports PDF, DOCX, TXT • Max 50 MB
+              Supports PDF, DOCX, TXT · Max 50 MB · One document at a time
             </p>
           </div>
 
@@ -141,7 +148,7 @@ export default function UploadPage() {
                   <div>
                     <div className="doc-name">{docStatus.document_name}</div>
                     <div className="doc-chunks">
-                      {docStatus.chunk_count} chunks indexed • Ready to chat
+                      {docStatus.chunk_count} chunks indexed · Ready to chat
                     </div>
                   </div>
                 </div>

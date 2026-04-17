@@ -16,6 +16,7 @@ from fastapi import WebSocket
 
 from app.core.config import settings
 from app.services.chat_service import chat, chat_stream
+from app.services.document_service import ClientDocumentService
 from app.services.analytics_service import start_trace, mark, record_error, finish_trace
 
 logger = logging.getLogger(__name__)
@@ -101,22 +102,24 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.wav") -> d
     return result
 
 
-async def synthesize_speech(text: str, voice: str = "af_sky") -> bytes:
+async def synthesize_speech(text: str, voice: str = "af_sky", language: str = "en") -> bytes:
     """
     Send text to the TTS microservice for synthesis.
+    Passes the detected language so the service can route to Edge-TTS for non-English.
     Returns: audio bytes (WAV format)
     """
-    logger.info(f"[TTS] Synthesizing {len(text)} chars: '{text[:60]}...'")
+    lang_norm = (language or "en").lower().split("-")[0]
+    logger.info(f"[TTS] Synthesizing {len(text)} chars (lang={lang_norm}): '{text[:60]}...'")
 
     client = _get_http_client()
     response = await client.post(
         f"{settings.TTS_SERVICE_URL}/synthesize",
-        json={"text": text, "voice": voice},
+        json={"text": text, "voice": voice, "language": lang_norm},
     )
     response.raise_for_status()
 
     audio_bytes = response.content
-    logger.info(f"[TTS] Received {len(audio_bytes)} bytes of audio")
+    logger.info(f"[TTS] Received {len(audio_bytes)} bytes of audio (lang={lang_norm})")
     return audio_bytes
 
 
@@ -321,10 +324,42 @@ async def voice_to_voice(
 #  Real-Time Conversational WebSocket Pipeline
 # ---------------------------------------------------------------------------
 
-async def handle_voice_conversation(websocket: WebSocket):
-    """Main conversational voice loop over WebSocket."""
+def _resolve_doc_service(client_id: str | None):
+    """
+    Always fetch the freshest ClientDocumentService for this client on each
+    turn. Uploading a new document invalidates the class-level cache, so
+    reading from the cache (vs. holding a stale reference) guarantees voice
+    sees the new FAISS index without needing a reconnect.
+    """
+    if not client_id:
+        return None
+    return ClientDocumentService.get_or_create(client_id)
+
+async def handle_voice_conversation(websocket: WebSocket, client=None):
+    """
+    Main conversational voice loop over WebSocket.
+
+    When `client` is provided, RAG runs against that client's isolated
+    ClientDocumentService (multi-tenant SaaS path). When it isn't, the
+    turn falls through to the legacy single-user document_service so
+    older callers keep working in dev.
+
+    The client's doc_service is re-resolved on every turn (see
+    _resolve_doc_service) so a mid-session document upload is picked up
+    automatically.
+    """
     conversation_id = None
     streaming_state = _new_streaming_session_state()
+    client_id = client.id if client is not None else None
+
+    if client_id:
+        initial = ClientDocumentService.get_or_create(client_id)
+        logger.info(
+            f"[Voice] Session opened for client={client_id} "
+            f"(has_document={initial.has_document}, "
+            f"doc={initial.document_name!r}, "
+            f"chunks={initial.chunk_count})"
+        )
 
     stt_ok = await check_stt_health()
     tts_ok = await check_tts_health()
@@ -396,6 +431,7 @@ async def handle_voice_conversation(websocket: WebSocket):
                         buffered_audio,
                         conversation_id,
                         filename="recording.wav",
+                        doc_service=_resolve_doc_service(client_id),
                     )
                 except Exception as e:
                     logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
@@ -434,7 +470,12 @@ async def handle_voice_conversation(websocket: WebSocket):
                 logger.info(f"--- New voice turn: {len(combined_audio)} bytes of audio ---")
 
                 try:
-                    conversation_id = await _process_voice_turn(websocket, combined_audio, conversation_id)
+                    conversation_id = await _process_voice_turn(
+                        websocket,
+                        combined_audio,
+                        conversation_id,
+                        doc_service=_resolve_doc_service(client_id),
+                    )
                 except Exception as e:
                     logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
                     await websocket.send_json({
@@ -457,6 +498,7 @@ async def _process_voice_turn(
     audio_bytes: bytes,
     conversation_id: str | None,
     filename: str = "recording.wav",
+    doc_service=None,
 ) -> str | None:
     """
     Process a single voice turn:
@@ -530,7 +572,8 @@ async def _process_voice_turn(
         return conversation_id
 
     stt_time = time.time() - turn_start
-    logger.info(f"[Turn] STT: {stt_time:.2f}s -> '{user_text}'")
+    detected_language = transcription.get("language", "en") or "en"
+    logger.info(f"[Turn] STT: {stt_time:.2f}s -> '{user_text}' (lang={detected_language})")
 
     if not user_text:
         record_error(trace_id, "Empty transcription")
@@ -546,15 +589,32 @@ async def _process_voice_turn(
     if trace_id in _active_traces:
         _active_traces[trace_id]["user_query"] = user_text
 
-    await websocket.send_json({"type": "transcription", "text": user_text})
+    await websocket.send_json({
+        "type": "transcription",
+        "text": user_text,
+        "language": detected_language,
+    })
 
     # 2) RAG stream + 3) Early TTS
+    if doc_service is None:
+        logger.warning(
+            "[Turn] doc_service is None — voice will use the legacy singleton "
+            "(empty in multi-tenant). Expect NO_CONTEXT responses."
+        )
+    else:
+        logger.info(
+            f"[Turn] Using doc_service: has_document={doc_service.has_document}, "
+            f"doc={doc_service.document_name!r}, chunks={doc_service.chunk_count}, "
+            f"domain_summary={(doc_service.domain_summary or '')[:80]!r}"
+        )
+
     await websocket.send_json({"type": "status", "message": "Thinking..."})
     rag_start = time.time()
 
     tts_available = await check_tts_health()
     if tts_available:
-        await websocket.send_json({"type": "status", "message": "Speaking..."})
+        lang_label = detected_language.upper() if detected_language != "en" else "EN"
+        await websocket.send_json({"type": "status", "message": f"Speaking ({lang_label})..."})
     else:
         logger.warning("[Turn] TTS unavailable; continuing in text-only mode")
 
@@ -566,7 +626,7 @@ async def _process_voice_turn(
     first_tts_done = False
 
     try:
-        stream = chat_stream(user_text, conversation_id)
+        stream = chat_stream(user_text, conversation_id, doc_service=doc_service)
         async for event in iterate_stream_with_timeout(stream, _RAG_TURN_TIMEOUT_SEC):
             event_type = event.get("type")
 
@@ -594,7 +654,7 @@ async def _process_voice_turn(
 
                     try:
                         audio_bytes_out = await asyncio.wait_for(
-                            synthesize_speech(sentence),
+                            synthesize_speech(sentence, language=detected_language),
                             timeout=_TTS_CHUNK_TIMEOUT_SEC,
                         )
                         if audio_bytes_out and len(audio_bytes_out) > 44:
@@ -634,7 +694,7 @@ async def _process_voice_turn(
         if tail and tts_available:
             try:
                 audio_bytes_out = await asyncio.wait_for(
-                    synthesize_speech(tail),
+                    synthesize_speech(tail, language=detected_language),
                     timeout=_TTS_CHUNK_TIMEOUT_SEC,
                 )
                 if audio_bytes_out and len(audio_bytes_out) > 44:

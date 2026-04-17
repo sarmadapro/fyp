@@ -544,7 +544,14 @@ export function useVoiceConversation() {
     // Pre-initialize AudioContext on user gesture (required by browsers)
     getAudioContext();
 
-    const ws = new WebSocket(`${WS_BASE}/voice/conversation`);
+    const token = localStorage.getItem('voicerag_token');
+    if (!token) {
+      setError('Please log in to use the voice assistant.');
+      return;
+    }
+    const ws = new WebSocket(
+      `${WS_BASE}/voice/conversation?token=${encodeURIComponent(token)}`
+    );
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

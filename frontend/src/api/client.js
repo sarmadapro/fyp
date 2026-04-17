@@ -140,7 +140,10 @@ export async function portalDeleteDocument() {
 }
 
 export async function portalChat(question) {
-  const res = await request(`/portal/chat?question=${encodeURIComponent(question)}`);
+  const res = await request('/portal/chat', {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  });
   return res.json();
 }
 
@@ -209,10 +212,14 @@ export function chatStreamURL() {
 }
 
 export async function sendMessageStream(question, conversationId, onChunk) {
-  const url = `${API_BASE}/chat/stream`;
+  const token = getToken();
+  const url = `${API_BASE}/portal/chat/stream`;   // authenticated — always uses client's own index
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ question, conversation_id: conversationId }),
   });
 

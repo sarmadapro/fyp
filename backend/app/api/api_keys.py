@@ -45,13 +45,19 @@ def create_api_key(
 ):
     """Generate a new API key for the current client."""
     # Limit keys per client
-    active_count = db.query(APIKey).filter(
-        APIKey.client_id == current_client.id,
-        APIKey.is_active == True,
-    ).count()
+    active_count = (
+        db.query(APIKey)
+        .filter(
+            APIKey.client_id == current_client.id,
+            APIKey.is_active == True,
+        )
+        .count()
+    )
 
     if active_count >= 5:
-        raise HTTPException(status_code=400, detail="Maximum 5 active API keys per account")
+        raise HTTPException(
+            status_code=400, detail="Maximum 5 active API keys per account"
+        )
 
     full_key, key_prefix, key_hash = APIKey.generate_key()
 
@@ -65,7 +71,9 @@ def create_api_key(
     db.commit()
     db.refresh(api_key)
 
-    logger.info(f"[APIKey] Created key {key_prefix}... for client {current_client.email}")
+    logger.info(
+        f"[APIKey] Created key {key_prefix}... for client {current_client.email}"
+    )
 
     return NewKeyResponse(
         id=api_key.id,
@@ -85,9 +93,14 @@ def list_api_keys(
     db: Session = Depends(get_db),
 ):
     """List all API keys for the current client."""
-    keys = db.query(APIKey).filter(
-        APIKey.client_id == current_client.id,
-    ).order_by(APIKey.created_at.desc()).all()
+    keys = (
+        db.query(APIKey)
+        .filter(
+            APIKey.client_id == current_client.id,
+        )
+        .order_by(APIKey.created_at.desc())
+        .all()
+    )
 
     return [
         KeyResponse(
@@ -110,10 +123,14 @@ def revoke_api_key(
     db: Session = Depends(get_db),
 ):
     """Revoke (deactivate) an API key."""
-    api_key = db.query(APIKey).filter(
-        APIKey.id == key_id,
-        APIKey.client_id == current_client.id,
-    ).first()
+    api_key = (
+        db.query(APIKey)
+        .filter(
+            APIKey.id == key_id,
+            APIKey.client_id == current_client.id,
+        )
+        .first()
+    )
 
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
@@ -121,5 +138,7 @@ def revoke_api_key(
     api_key.is_active = False
     db.commit()
 
-    logger.info(f"[APIKey] Revoked key {api_key.key_prefix}... for client {current_client.email}")
+    logger.info(
+        f"[APIKey] Revoked key {api_key.key_prefix}... for client {current_client.email}"
+    )
     return {"message": "API key revoked"}

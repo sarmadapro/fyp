@@ -1,9 +1,20 @@
 # Core
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
+python-dotenv==1.1.0
+pydantic==2.11.1
 
-# TTS
+# English TTS — Kokoro (local, offline)
 kokoro==0.9.4
 soundfile==0.13.1
 torch>=2.0.0
 transformers==4.57.6
+
+# Multilingual TTS — Edge-TTS (Microsoft, online)
+edge-tts>=7.0.0
+
+# Audio conversion fallback
+pydub==0.25.1
+
+# Offline fallback TTS — Windows SAPI (pyttsx3) or espeak on Linux
+pyttsx3==2.98

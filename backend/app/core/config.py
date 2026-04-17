@@ -9,26 +9,22 @@ from dotenv import load_dotenv
 
 # Try multiple paths to find .env file
 _possible_env_paths = [
-    Path(__file__).resolve().parent.parent.parent.parent / ".env",  # From backend/app/core/config.py to project root
-    Path(__file__).resolve().parent.parent.parent / ".env",  # One level up (in case structure is different)
-    Path.cwd() / ".env",  # Current working directory
-    Path.cwd().parent / ".env",  # Parent of current working directory
+    Path(__file__).resolve().parent.parent.parent.parent / ".env",  # project root
+    Path(__file__).resolve().parent.parent.parent / ".env",
+    Path.cwd() / ".env",
+    Path.cwd().parent / ".env",
 ]
 
 _env_loaded = False
 for _env_path in _possible_env_paths:
     if _env_path.exists():
         load_dotenv(_env_path)
-        print(f"[CONFIG] [OK] Loaded .env from: {_env_path}")
+        print(f"[CONFIG] Loaded .env from: {_env_path}")
         _env_loaded = True
         break
 
 if not _env_loaded:
-    print("[CONFIG] [WARN] WARNING: .env file not found in any expected location!")
-    print("[CONFIG] Tried:")
-    for path in _possible_env_paths:
-        print(f"[CONFIG]   - {path}")
-    # Try loading from environment anyway
+    print("[CONFIG] WARNING: .env file not found in any expected location!")
     load_dotenv()
 
 
@@ -43,12 +39,23 @@ class Settings:
     ).split(",")
 
     # --- LLM Configuration ---
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "deepseek"
+    # Priority: if GROQ_API_KEY is set → groq; else LLM_PROVIDER env var; else ollama
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", os.getenv("LLM_MODEL", "qwen2.5:0.5b"))
+
+    # DEEPSEEK kept for backwards-compatibility
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama3.2:3b")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+
+    # Resolved provider (computed in __init__)
+    LLM_PROVIDER: str = ""
+    LLM_MODEL: str = ""
 
     # --- RAG ---
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -59,30 +66,63 @@ class Settings:
     # --- File Storage ---
     UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", "./data/uploads"))
     INDEX_DIR: Path = Path(os.getenv("INDEX_DIR", "./data/indices"))
+    CLIENT_DATA_DIR: Path = Path(os.getenv("CLIENT_DATA_DIR", "./data/clients"))
 
     # --- Microservices ---
     STT_SERVICE_URL: str = os.getenv("STT_SERVICE_URL", "http://localhost:8001")
     TTS_SERVICE_URL: str = os.getenv("TTS_SERVICE_URL", "http://localhost:8002")
 
+    # --- Auth ---
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "voicerag-dev-secret-change-in-production-2024")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+
+    # --- Email ---
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "noreply@voicerag.ai")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    # --- Database ---
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")  # set to postgres url in production
+
     def __init__(self):
         # Ensure directories exist
         self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         self.INDEX_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Validate critical settings
-        if self.LLM_PROVIDER == "deepseek":
-            if not self.DEEPSEEK_API_KEY or self.DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
-                print("[CONFIG] WARNING: DEEPSEEK_API_KEY is not set or using placeholder!")
-                print("[CONFIG] Please add your DeepSeek API key to the .env file")
-            else:
-                print(f"[CONFIG] DEEPSEEK_API_KEY loaded: {self.DEEPSEEK_API_KEY[:10]}...")
-        elif self.LLM_PROVIDER == "ollama":
-            print(f"[CONFIG] Using Ollama at: {self.OLLAMA_BASE_URL}")
+        self.CLIENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Resolve LLM provider with priority:
+        # 1. Groq (if API key present and not placeholder)
+        # 2. Explicit LLM_PROVIDER env var
+        # 3. Ollama (default)
+        _explicit_provider = os.getenv("LLM_PROVIDER", "").lower()
+
+        _groq_key_valid = (
+            bool(self.GROQ_API_KEY)
+            and self.GROQ_API_KEY not in ("your_groq_api_key_here", "")
+        )
+
+        if _groq_key_valid:
+            self.LLM_PROVIDER = "groq"
+            self.LLM_MODEL = self.GROQ_MODEL
+            print(f"[CONFIG] LLM: Groq ({self.GROQ_MODEL}) — key detected")
+        elif _explicit_provider == "deepseek" and self.DEEPSEEK_API_KEY:
+            self.LLM_PROVIDER = "deepseek"
+            self.LLM_MODEL = self.DEEPSEEK_MODEL
+            print(f"[CONFIG] LLM: DeepSeek ({self.DEEPSEEK_MODEL})")
+        else:
+            self.LLM_PROVIDER = "ollama"
+            self.LLM_MODEL = self.OLLAMA_MODEL
+            if _groq_key_valid is False and _explicit_provider == "groq":
+                print("[CONFIG] WARNING: LLM_PROVIDER=groq but GROQ_API_KEY missing — falling back to Ollama")
+            print(f"[CONFIG] LLM: Ollama @ {self.OLLAMA_BASE_URL} ({self.OLLAMA_MODEL})")
+
+        print(f"[CONFIG] Backend: {self.BACKEND_HOST}:{self.BACKEND_PORT}")
+        print(f"[CONFIG] Embedding: {self.EMBEDDING_MODEL}")
 
 
 settings = Settings()
-
-# Print loaded configuration on import
-print(f"[CONFIG] Backend Host: {settings.BACKEND_HOST}:{settings.BACKEND_PORT}")
-print(f"[CONFIG] LLM Model: {settings.LLM_MODEL}")
-print(f"[CONFIG] Embedding Model: {settings.EMBEDDING_MODEL}")

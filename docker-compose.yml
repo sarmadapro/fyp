@@ -1,0 +1,130 @@
+version: "3.9"
+
+# ── VoiceRAG SaaS Platform ───────────────────────────────────────────────────
+# Local development: docker compose up --build
+# Production:        set DATABASE_URL to PostgreSQL, GROQ_API_KEY, SMTP_* etc.
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       voicerag
+      POSTGRES_USER:     voicerag
+      POSTGRES_PASSWORD: voicerag_dev_password   # override in production!
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voicerag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Backend ───────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database (PostgreSQL in Docker; SQLite if DATABASE_URL is unset)
+      DATABASE_URL:         postgresql://voicerag:voicerag_dev_password@db:5432/voicerag
+
+      # LLM (Groq if key is set, else Ollama)
+      GROQ_API_KEY:         ${GROQ_API_KEY:-}
+      GROQ_MODEL:           ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      OLLAMA_BASE_URL:      ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL:         ${OLLAMA_MODEL:-qwen2.5:0.5b}
+
+      # Services
+      STT_SERVICE_URL:      http://stt:8001
+      TTS_SERVICE_URL:      http://tts:8002
+
+      # Auth
+      JWT_SECRET_KEY:       ${JWT_SECRET_KEY:-change-me-in-production}
+
+      # CORS (frontend origin)
+      CORS_ORIGINS:         ${CORS_ORIGINS:-http://localhost:5173,http://localhost:80,http://frontend}
+
+      # Email (optional)
+      SMTP_HOST:            ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT:            ${SMTP_PORT:-587}
+      SMTP_USER:            ${SMTP_USER:-}
+      SMTP_PASSWORD:        ${SMTP_PASSWORD:-}
+      SMTP_FROM:            ${SMTP_FROM:-noreply@voicerag.ai}
+      FRONTEND_URL:         ${FRONTEND_URL:-http://localhost:5173}
+    volumes:
+      - backend_data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── STT Service ───────────────────────────────────────────────────────────
+  stt:
+    build:
+      context: ./services/stt
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      STT_MODEL_SIZE:        ${STT_MODEL_SIZE:-small}
+      STT_DEVICE:            ${STT_DEVICE:-cpu}
+      STT_COMPUTE_TYPE:      ${STT_COMPUTE_TYPE:-int8}
+      STT_FALLBACK_MODEL_SIZE: small
+    volumes:
+      - stt_models:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── TTS Service ───────────────────────────────────────────────────────────
+  tts:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      TTS_VOICE:    ${TTS_VOICE:-af_sky}
+      TTS_LANG_CODE: ${TTS_LANG_CODE:-a}
+    volumes:
+      - tts_models:/root/.cache
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+  backend_data:
+  stt_models:
+  tts_models:

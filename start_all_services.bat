@@ -16,6 +16,10 @@ if not exist .env (
     exit /b 1
 )
 
+echo Running database migrations...
+cd backend && venv\Scripts\python.exe migrate_db.py && cd ..
+echo.
+
 echo Starting Backend Service (Port 8000)...
 start "Backend - Port 8000" cmd /k "cd backend && venv\Scripts\activate && python main.py"
 timeout /t 2 /nobreak >nul
