@@ -471,11 +471,16 @@ export function useVoiceConversation() {
           interruptPlayback();
           isProcessingRef.current = false;
           setIsProcessing(false);
-          // Resume VAD then start capturing the user's utterance.
-          resumeVAD();
+          // Start capturing the user's utterance immediately so we don't
+          // miss the leading edge of their speech.
           startSpeechChunkStreaming().catch((err) => {
             console.error('[BargeIn] Failed to start chunk streaming:', err);
           });
+          // Resume VAD after a short grace period: the interrupted TTS
+          // chunk leaves echo in the room for ~150-200ms. If we resume
+          // immediately, that echo tail can reach VAD before it pauses
+          // again, causing a false onSpeechStart on the next response.
+          setTimeout(resumeVAD, 200);
         }
       } else {
         bargeInConsecutiveRef.current = 0;
@@ -878,6 +883,14 @@ export function useVoiceConversation() {
             if (!acceptingAudioRef.current) {
               console.log(`[Audio] Dropped stale audio_chunk ${msg.index}/${msg.total} (post-barge-in)`);
               break;
+            }
+            // Belt-and-suspenders: pause VAD synchronously before decode
+            // begins. The transcription handler already did this, but in
+            // the barge-in path the VAD was just resumed and may have
+            // queued audio frames that haven't been processed yet. A second
+            // synchronous pause here costs nothing and closes that window.
+            if (vadRef.current && !isPlayingRef.current) {
+              try { vadRef.current.pause(); } catch { /* already paused */ }
             }
             enqueueAudio(msg.data, msg.index, msg.total);
             break;
