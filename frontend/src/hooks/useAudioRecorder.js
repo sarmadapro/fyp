@@ -14,12 +14,14 @@ export function useAudioRecorder() {
 
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
           sampleRate: 16000,
-        } 
+        },
       });
 
       const mediaRecorder = new MediaRecorder(stream, {

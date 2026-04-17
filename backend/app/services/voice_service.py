@@ -352,6 +352,12 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
     streaming_state = _new_streaming_session_state()
     client_id = client.id if client is not None else None
 
+    # Session-level container for the current turn task + the conversation_id
+    # the next turn should continue from. Using a dict so the fire-and-forget
+    # turn task can mutate conv_id on completion without the main loop holding
+    # a stale local variable.
+    turn_state: dict = {"task": None, "conv_id": None}
+
     if client_id:
         initial = ClientDocumentService.get_or_create(client_id)
         logger.info(
@@ -388,8 +394,8 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
             msg_type = message.get("type", "")
 
             if msg_type == "config":
-                conversation_id = message.get("conversation_id")
-                logger.info(f"Voice session configured: conv_id={conversation_id}")
+                turn_state["conv_id"] = message.get("conversation_id")
+                logger.info(f"Voice session configured: conv_id={turn_state['conv_id']}")
 
             elif msg_type == "audio_chunk":
                 audio_data = message.get("data", "")
@@ -425,26 +431,29 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
                     f"--- New voice turn (streamed): {len(buffered_pcm)} PCM bytes @ {sample_rate}Hz ---"
                 )
 
-                try:
-                    conversation_id = await _process_voice_turn(
+                # Cancel any in-flight turn (implicit barge-in on a new commit).
+                await _cancel_turn(turn_state, reason="new audio_commit")
+                turn_state["task"] = asyncio.create_task(
+                    _run_turn(
                         websocket,
                         buffered_audio,
-                        conversation_id,
+                        turn_state,
                         filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
                     )
-                except Exception as e:
-                    logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Something went wrong processing your speech. Try again."
-                    })
-
-                await websocket.send_json({"type": "listening"})
+                )
 
             elif msg_type == "audio_discard":
                 streaming_state = _new_streaming_session_state()
                 logger.debug("Discarded current streamed utterance buffer.")
+
+            elif msg_type == "interrupt":
+                # Explicit barge-in signal from the client: user started talking
+                # while the assistant was responding. Kill the current turn; the
+                # client will follow up with audio_commit for the new utterance.
+                cancelled = await _cancel_turn(turn_state, reason="client interrupt")
+                if cancelled:
+                    await websocket.send_json({"type": "listening"})
 
             elif msg_type == "audio_complete":
                 # Legacy one-shot utterance; clear any streamed buffer first.
@@ -469,28 +478,95 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
 
                 logger.info(f"--- New voice turn: {len(combined_audio)} bytes of audio ---")
 
-                try:
-                    conversation_id = await _process_voice_turn(
+                await _cancel_turn(turn_state, reason="new audio_complete")
+                turn_state["task"] = asyncio.create_task(
+                    _run_turn(
                         websocket,
                         combined_audio,
-                        conversation_id,
+                        turn_state,
+                        filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
                     )
-                except Exception as e:
-                    logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": "Something went wrong processing your speech. Try again."
-                    })
-
-                await websocket.send_json({"type": "listening"})
+                )
 
             elif msg_type == "end_session":
                 logger.info("Voice session ended by client.")
+                await _cancel_turn(turn_state, reason="end_session")
                 break
 
     except Exception as e:
         logger.info(f"Voice WebSocket closed: {e}")
+    finally:
+        # Guarantee any still-running turn is cancelled when the socket closes.
+        await _cancel_turn(turn_state, reason="socket closed")
+
+
+async def _cancel_turn(turn_state: dict, reason: str) -> bool:
+    """
+    Cancel the currently running turn task (if any) and wait for it to
+    fully unwind so no stale TTS chunks leak onto the websocket.
+
+    Returns True if a task was actually cancelled, False if there was no
+    in-flight turn.
+    """
+    task: asyncio.Task | None = turn_state.get("task")
+    if task is None or task.done():
+        return False
+
+    logger.info(f"[Voice] Cancelling in-flight turn ({reason})")
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
+    turn_state["task"] = None
+    return True
+
+
+async def _run_turn(
+    websocket: WebSocket,
+    audio_bytes: bytes,
+    turn_state: dict,
+    filename: str = "recording.wav",
+    doc_service=None,
+) -> None:
+    """
+    Wrapper that runs _process_voice_turn as a background task so the main
+    WebSocket receive loop can keep listening for interrupt/audio_commit
+    messages while the turn is in flight.
+
+    Cancellation (client interrupt, new commit, socket close) propagates as
+    asyncio.CancelledError through the STT/RAG/TTS awaits inside the turn.
+    """
+    try:
+        new_conv_id = await _process_voice_turn(
+            websocket,
+            audio_bytes,
+            turn_state.get("conv_id"),
+            filename=filename,
+            doc_service=doc_service,
+        )
+        if new_conv_id:
+            turn_state["conv_id"] = new_conv_id
+        try:
+            await websocket.send_json({"type": "listening"})
+        except Exception:
+            pass
+    except asyncio.CancelledError:
+        # Barge-in / client disconnected. Don't emit anything — the main
+        # loop will send "listening" after awaiting us on the interrupt path.
+        logger.info("[Voice] Turn task cancelled (barge-in)")
+        raise
+    except Exception as e:
+        logger.error(f"Voice pipeline error: {e}\n{traceback.format_exc()}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Something went wrong processing your speech. Try again.",
+            })
+            await websocket.send_json({"type": "listening"})
+        except Exception:
+            pass
 
 
 async def _process_voice_turn(
