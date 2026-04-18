@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # How many candidates FAISS returns before reranking. Higher = better
 # recall, more reranker work. 20 is a good middle ground.
-RETRIEVE_CANDIDATES = 20
+RETRIEVE_CANDIDATES = 40  # raised for parent-child: more children searched before dedup by parent
 
 # How many chunks survive rerank and get sent to the LLM.
 FINAL_CHUNKS = 5
@@ -68,8 +68,8 @@ CONVERSATION RULES:
 1. BE CONCISE. One to three sentences for most answers. Only go longer when the question \
 genuinely requires detail AND the context supports it.
 
-2. NO markdown. No bullet points, no numbered lists, no asterisks, no bold, no headers. \
-Write in plain conversational sentences like a person texting a colleague.
+2. NO markdown whatsoever. Do not use **, *, #, -, or any other markdown symbols. \
+Write in plain prose sentences only, like someone texting a colleague. No lists.
 
 3. Do not talk about your internals. Never say "the document", "the context", "the index", \
 "according to my sources", "based on the provided text", "I was given", or anything that \
@@ -196,11 +196,48 @@ def _format_context(final_chunks: list[dict]) -> str:
 
 
 def _retrieve_and_rerank(query: str, doc_service) -> list[dict]:
-    """FAISS top-N → cross-encoder rerank → top-K."""
+    """
+    Phase 2 retrieval: FAISS child search → rerank → parent context swap → top-K.
+
+    Children are small, precise retrieval targets embedded in FAISS.
+    After reranking, each matched child is swapped for its parent (full section
+    text) before being sent to the LLM — giving the model complete context
+    instead of a sentence fragment.
+
+    Falls back to returning children directly when no parent store exists
+    (old indices, non-PDF documents).
+    """
     candidates = doc_service.similarity_search(query, top_k=RETRIEVE_CANDIDATES)
     if not candidates:
         return []
-    return Reranker.get().rerank(query, candidates, top_k=FINAL_CHUNKS)
+
+    ranked = Reranker.get().rerank(query, candidates, top_k=FINAL_CHUNKS)
+
+    if not getattr(doc_service, "has_parent_store", False):
+        return ranked
+
+    seen_parents: set[int] = set()
+    enriched: list[dict] = []
+    for child in ranked:
+        pid = child["metadata"].get("parent_idx")
+        if pid is None or pid in seen_parents:
+            continue
+        parent = doc_service.get_parent(pid)
+        if parent:
+            enriched.append({
+                "content": parent["text"],
+                "metadata": {
+                    **child["metadata"],
+                    "heading": parent.get("heading", child["metadata"].get("heading", "")),
+                    "page": parent.get("start_page", child["metadata"].get("page")),
+                },
+                "rerank_score": child.get("rerank_score", 0),
+            })
+        else:
+            enriched.append(child)
+        seen_parents.add(pid)
+
+    return enriched if enriched else ranked
 
 
 def _has_relevant_context(ranked: list[dict]) -> bool:
