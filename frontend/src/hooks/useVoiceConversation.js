@@ -66,6 +66,11 @@ export function useVoiceConversation() {
   const bargeInDetectorRef = useRef(null);
   // Consecutive samples above threshold — avoids single-spike false triggers.
   const bargeInConsecutiveRef = useRef(0);
+  // Software gate: true from 'transcription' until resumeVAD() is called.
+  // Guards onSpeechStart independently of vad.pause() timing — if the VAD
+  // worker has queued frames that fire after pause() is called, this ref
+  // catches them before any processing begins.
+  const ttsActiveRef = useRef(false);
   // AudioContext for reliable playback
   const audioContextRef = useRef(null);
   // Refs that mirror state (to avoid stale closures in WS/VAD callbacks)
@@ -188,10 +193,12 @@ export function useVoiceConversation() {
   // (VAD is paused during this period so echo can't reach onSpeechStart).
   // When mic energy consistently exceeds playback by RATIO, it's a real
   // human interruption — we trigger barge-in directly.
-  const BARGE_POLL_MS = 50;
-  const BARGE_CONSECUTIVE = 4;   // 4 × 50ms = 200ms sustained speech
-  const BARGE_RATIO = 1.5;       // mic must be 50% louder than playback
-  const BARGE_FLOOR = 0.025;     // ignore near-silence
+  const BARGE_POLL_MS = 40;
+  const BARGE_CALIBRATION_SAMPLES = 5;   // first 200ms (5 × 40ms) — measure echo
+  const BARGE_CONSECUTIVE = 6;           // 6 × 40ms = 240ms sustained speech
+  const BARGE_RATIO_MULT = 2.5;          // threshold = baseline_echo × 2.5
+  const BARGE_ABS_THRESHOLD = 0.07;      // absolute mic floor (room-independent)
+  const BARGE_FLOOR = 0.03;              // ignore near-silence on mic
 
   const stopBargeInDetector = useCallback(() => {
     if (bargeInDetectorRef.current) {
@@ -206,6 +213,9 @@ export function useVoiceConversation() {
 
   // ── Resume VAD Safely ──
   const resumeVAD = useCallback(() => {
+    // Clear the software TTS gate — from this point on, onSpeechStart is
+    // allowed to process detections again.
+    ttsActiveRef.current = false;
     if (vadRef.current && isConnectedRef.current) {
       try {
         vadRef.current.start();
@@ -413,6 +423,9 @@ export function useVoiceConversation() {
   // ── Barge-in: stop current TTS playback + tell backend to cancel ──
   const interruptPlayback = useCallback(() => {
     stopBargeInDetector();
+    // User is taking control — clear TTS gate so VAD can listen again
+    // (after the grace period in the barge-in detector).
+    ttsActiveRef.current = false;
     // Bump generation so any in-flight decode/onended from previous chunks
     // doesn't accidentally start the next queued chunk.
     playbackGenerationRef.current += 1;
@@ -447,13 +460,23 @@ export function useVoiceConversation() {
     }
   }, [stopBargeInDetector]);
 
-  // ── Barge-in energy detector (polling loop) ──
-  // Called once when TTS begins. Polls mic vs playback RMS every BARGE_POLL_MS.
-  // When mic exceeds playback by BARGE_RATIO for BARGE_CONSECUTIVE samples,
-  // we treat it as a real human interruption and perform barge-in.
+  // ── Barge-in energy detector (polling loop, adaptive) ──
+  // Phase 1 — Calibration (first BARGE_CALIBRATION_SAMPLES ticks):
+  //   Measure the actual echo ratio (mic/tts) for this room/device.
+  //   Rooms vary widely: some attenuate echo to 5%, others to 40%.
+  //   Fixed thresholds fail at both extremes.
+  // Phase 2 — Detection:
+  //   Require mic > adaptiveThreshold AND either:
+  //     (a) ratio-based: mic > (calibrated_echo × BARGE_RATIO_MULT), OR
+  //     (b) absolute:    mic > BARGE_ABS_THRESHOLD (user speaking loudly)
+  //   Confirmed after BARGE_CONSECUTIVE passes (~240ms) with no resets.
   const startBargeInDetector = useCallback(() => {
     stopBargeInDetector();
     bargeInConsecutiveRef.current = 0;
+
+    let calibCount = 0;
+    let calibRatioSum = 0;
+    let dynamicThreshold = null; // set after calibration
 
     bargeInDetectorRef.current = setInterval(() => {
       if (!isPlayingRef.current) {
@@ -462,24 +485,49 @@ export function useVoiceConversation() {
       }
       const mic = rmsFromAnalyser(micAnalyserRef.current);
       const tts = rmsFromAnalyser(playbackAnalyserRef.current);
-      if (mic > BARGE_FLOOR && mic > tts * BARGE_RATIO) {
-        bargeInConsecutiveRef.current += 1;
-        console.log(`[BargeIn] Candidate: mic=${mic.toFixed(3)} tts=${tts.toFixed(3)} (${bargeInConsecutiveRef.current}/${BARGE_CONSECUTIVE})`);
+
+      // Skip until TTS is actually audible (avoid calibrating on silence
+      // at the very start of the first chunk's decode/buffer fill).
+      if (tts < 0.01) return;
+
+      // ── Phase 1: Calibration ──
+      if (calibCount < BARGE_CALIBRATION_SAMPLES) {
+        calibRatioSum += mic / tts;
+        calibCount++;
+        if (calibCount === BARGE_CALIBRATION_SAMPLES) {
+          const baseRatio = calibRatioSum / calibCount;
+          // Threshold = 2.5× above measured echo baseline, but never below 1.5.
+          dynamicThreshold = Math.max(baseRatio * BARGE_RATIO_MULT, 1.5);
+          console.log(`[BargeIn] Calibrated: echoBase=${baseRatio.toFixed(3)} → threshold=${dynamicThreshold.toFixed(3)}`);
+        }
+        return;
+      }
+
+      // ── Phase 2: Detection ──
+      const ratioPass  = mic > BARGE_FLOOR && tts > 0 && (mic / tts) > dynamicThreshold;
+      const absPass    = mic > BARGE_ABS_THRESHOLD;
+
+      if (ratioPass || absPass) {
+        bargeInConsecutiveRef.current++;
+        console.log(
+          `[BargeIn] Candidate: mic=${mic.toFixed(3)} tts=${tts.toFixed(3)} ` +
+          `ratio=${tts > 0 ? (mic/tts).toFixed(2) : '∞'} ` +
+          `(${bargeInConsecutiveRef.current}/${BARGE_CONSECUTIVE})`
+        );
         if (bargeInConsecutiveRef.current >= BARGE_CONSECUTIVE) {
-          console.log('[BargeIn] Confirmed — interrupting TTS');
+          console.log('[BargeIn] Confirmed — real speech detected, interrupting TTS');
           stopBargeInDetector();
           interruptPlayback();
           isProcessingRef.current = false;
           setIsProcessing(false);
-          // Start capturing the user's utterance immediately so we don't
-          // miss the leading edge of their speech.
+          // Capture starts immediately — don't lose the leading edge of the
+          // user's utterance while we wait for the grace timer.
           startSpeechChunkStreaming().catch((err) => {
             console.error('[BargeIn] Failed to start chunk streaming:', err);
           });
-          // Resume VAD after a short grace period: the interrupted TTS
-          // chunk leaves echo in the room for ~150-200ms. If we resume
-          // immediately, that echo tail can reach VAD before it pauses
-          // again, causing a false onSpeechStart on the next response.
+          // Grace period before re-enabling VAD: the interrupted TTS chunk
+          // leaves room echo for ~150-200ms. ttsActiveRef was already cleared
+          // by interruptPlayback(), so resumeVAD() will allow onSpeechStart.
           setTimeout(resumeVAD, 200);
         }
       } else {
@@ -732,11 +780,14 @@ export function useVoiceConversation() {
       onSpeechStart: () => {
         console.log('[VAD] Speech started');
 
-        // VAD is paused while TTS plays, so onSpeechStart should never fire
-        // during active playback. If it does fire (race at chunk boundary),
-        // ignore — the barge-in detector is the authority during TTS.
-        if (isPlayingRef.current) {
-          console.log('[VAD] onSpeechStart during TTS (race/echo) — suppressed');
+        // Primary gate: ttsActiveRef is set at 'transcription' (before any
+        // audio plays) and cleared only in resumeVAD(). This catches VAD
+        // worker frames that were queued before pause() took full effect,
+        // as well as any race at the first chunk boundary.
+        // Secondary gate: isPlayingRef catches the case where ttsActiveRef
+        // was somehow not set (e.g. TTS with no prior transcription event).
+        if (ttsActiveRef.current || isPlayingRef.current) {
+          console.log('[VAD] onSpeechStart suppressed (TTS active)');
           return;
         }
 
@@ -854,6 +905,9 @@ export function useVoiceConversation() {
             currentTranscriptionRef.current = msg.text || '';
             setCurrentTranscription(msg.text || '');
             setStatusMessage('Got it! Thinking...');
+            // Arm the software TTS gate. onSpeechStart will suppress any
+            // VAD detections from here until resumeVAD() is called.
+            ttsActiveRef.current = true;
             // Pre-emptively pause VAD here, before any TTS arrives.
             // Waiting until the first audio_chunk to pause is too late:
             // decodeAudioData is async, so audio can hit the speakers while
@@ -930,8 +984,12 @@ export function useVoiceConversation() {
             setStatusMessage(msg.message || 'Something went wrong');
             isProcessingRef.current = false;
             setIsProcessing(false);
-            // Resume VAD so user can try again
-            resumeVAD();
+            // Only resume VAD if TTS isn't still playing. If audio is in
+            // the queue (e.g. a backend error mid-stream), let the queue
+            // drain naturally — resumeVAD fires in playNextInQueue.
+            if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
+              resumeVAD();
+            }
             break;
 
           case 'done':
