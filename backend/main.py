@@ -25,6 +25,7 @@ from app.api.api_keys    import router as api_keys_router
 from app.api.widget      import router as widget_router
 from app.api.portal      import router as portal_router
 from app.api.widget_embed import router as widget_embed_router
+from app.api.admin       import router as admin_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +64,7 @@ app.include_router(api_keys_router)
 app.include_router(widget_router)
 app.include_router(portal_router)
 app.include_router(widget_embed_router)
+app.include_router(admin_router)
 
 
 # ─── Health ───────────────────────────────────────────────────────────
@@ -83,6 +85,12 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    # Auto-migrate new columns (idempotent)
+    try:
+        import migrate_admin
+        migrate_admin.run()
+    except Exception as e:
+        logger.warning(f"Admin migration skipped: {e}")
 
     logger.info("=" * 60)
     logger.info("VoiceRAG SaaS Platform v3.0 — Starting")

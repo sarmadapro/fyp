@@ -46,6 +46,9 @@ class Client(Base):
     password_reset_token            = Column(String(64), nullable=True, index=True)
     password_reset_expires_at       = Column(DateTime, nullable=True)
 
+    is_admin = Column(Boolean, default=False)
+    last_seen_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
