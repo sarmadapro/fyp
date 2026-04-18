@@ -9,353 +9,372 @@ from fastapi.responses import Response
 router = APIRouter(tags=["Widget Embed"])
 
 
-WIDGET_JS = """
-(function() {
+WIDGET_JS = r"""
+(function () {
   'use strict';
 
-  // Find the script tag to get config
-  const scriptTag = document.currentScript || document.querySelector('script[data-api-key]');
-  if (!scriptTag) { console.error('VoiceRAG: Script tag not found'); return; }
+  /* ── Bootstrap ─────────────────────────────────────────────── */
+  if (document.getElementById('vrag-root')) return; // prevent double-init
 
-  const API_KEY = scriptTag.getAttribute('data-api-key');
-  const API_URL = scriptTag.getAttribute('data-api-url') || scriptTag.src.replace(/\\/widget\\.js.*/, '');
-  const POSITION = scriptTag.getAttribute('data-position') || 'right';
-  const THEME = scriptTag.getAttribute('data-theme') || 'dark';
+  const script  = document.currentScript || document.querySelector('script[data-api-key]');
+  if (!script)  { console.error('[VoiceRAG] Script tag not found'); return; }
 
-  if (!API_KEY) { console.error('VoiceRAG: data-api-key attribute is required'); return; }
+  const API_KEY  = script.getAttribute('data-api-key');
+  const API_URL  = (script.getAttribute('data-api-url') || script.src.replace(/\/widget\.js.*/, '')).replace(/\/$/, '');
+  const SIDE     = script.getAttribute('data-position') || 'right';
+  const DARK     = script.getAttribute('data-theme') !== 'light';
 
-  // Inject styles
-  const style = document.createElement('style');
-  style.textContent = `
-    #vrag-widget-container * { box-sizing: border-box; margin: 0; padding: 0; }
-    #vrag-widget-container {
-      --vrag-primary: #6c5ce7;
-      --vrag-primary-hover: #5a4bd1;
-      --vrag-bg: ${THEME === 'light' ? '#ffffff' : '#1a1a2e'};
-      --vrag-bg-secondary: ${THEME === 'light' ? '#f5f5f8' : '#16213e'};
-      --vrag-text: ${THEME === 'light' ? '#1a1a2e' : '#e8e8f0'};
-      --vrag-text-secondary: ${THEME === 'light' ? '#666' : '#a0a0b8'};
-      --vrag-border: ${THEME === 'light' ? '#e0e0e8' : 'rgba(255,255,255,0.08)'};
-      --vrag-shadow: 0 8px 32px rgba(0,0,0,0.3);
-      --vrag-radius: 16px;
+  if (!API_KEY) { console.error('[VoiceRAG] data-api-key attribute is required'); return; }
+
+  /* ── CSS ────────────────────────────────────────────────────── */
+  const css = `
+    #vrag-root *, #vrag-root *::before, #vrag-root *::after {
+      box-sizing: border-box; margin: 0; padding: 0; border: none; outline: none;
+    }
+    #vrag-root {
+      --p:  #6c5ce7;
+      --p2: #00cec9;
+      --pg: linear-gradient(135deg,#6c5ce7 0%,#5a4bd1 50%,#00cec9 100%);
+      --bg:  ${DARK ? '#111118' : '#ffffff'};
+      --bg2: ${DARK ? '#1c1c28' : '#f4f4f8'};
+      --bg3: ${DARK ? '#252535' : '#ebebf2'};
+      --tx:  ${DARK ? '#e4e4f0' : '#111120'};
+      --tx2: ${DARK ? '#8888a8' : '#666678'};
+      --bd:  ${DARK ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.09)'};
+      --sh:  0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       position: fixed;
-      bottom: 20px;
-      ${POSITION === 'left' ? 'left: 20px' : 'right: 20px'};
-      z-index: 999999;
-    }
-
-    #vrag-toggle {
-      width: 56px; height: 56px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #6c5ce7, #00cec9);
-      border: none;
-      cursor: pointer;
+      bottom: 24px;
+      ${SIDE === 'left' ? 'left:24px' : 'right:24px'};
+      z-index: 2147483647;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 20px rgba(108, 92, 231, 0.4);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      flex-direction: column;
+      align-items: ${SIDE === 'left' ? 'flex-start' : 'flex-end'};
+      gap: 14px;
     }
-    #vrag-toggle:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(108, 92, 231, 0.5); }
-    #vrag-toggle svg { width: 24px; height: 24px; fill: white; }
 
-    #vrag-chat-window {
+    /* ─── Toggle ───────────────────────────────────────────────── */
+    #vrag-btn {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--pg);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(108,92,231,0.5);
+      transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease;
+      position: relative;
+      background-color: transparent;
+    }
+    #vrag-btn:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(108,92,231,0.6); }
+    #vrag-btn-icon { transition: transform .3s ease; }
+    #vrag-btn.open #vrag-btn-icon { transform: rotate(90deg); }
+    #vrag-dot {
+      position: absolute; top: 0; right: 0;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: #ff4757; border: 2px solid var(--bg);
       display: none;
-      position: absolute;
-      bottom: 70px;
-      ${POSITION === 'left' ? 'left: 0' : 'right: 0'};
-      width: 380px;
-      max-height: 520px;
-      background: var(--vrag-bg);
-      border-radius: var(--vrag-radius);
-      border: 1px solid var(--vrag-border);
-      box-shadow: var(--vrag-shadow);
-      flex-direction: column;
+    }
+    #vrag-dot.on { display: block; animation: vrag-pop .3s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes vrag-pop { from{transform:scale(0)} to{transform:scale(1)} }
+
+    /* ─── Window ────────────────────────────────────────────────── */
+    #vrag-win {
+      width: 365px;
+      background: var(--bg);
+      border-radius: 20px;
+      border: 1px solid var(--bd);
+      box-shadow: var(--sh);
+      display: none; flex-direction: column;
       overflow: hidden;
-      animation: vragSlideUp 0.3s ease-out;
+      transform-origin: bottom ${SIDE === 'left' ? 'left' : 'right'};
     }
-    #vrag-chat-window.open { display: flex; }
-
-    @keyframes vragSlideUp {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .vrag-header {
-      padding: 16px 20px;
-      background: linear-gradient(135deg, #6c5ce7, #00cec9);
-      color: white;
+    #vrag-win.open {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      animation: vrag-open .3s cubic-bezier(.34,1.56,.64,1);
     }
-    .vrag-header-title { font-size: 15px; font-weight: 600; }
-    .vrag-header-sub { font-size: 11px; opacity: 0.8; margin-top: 2px; }
-    .vrag-close-btn {
-      background: rgba(255,255,255,0.2);
-      border: none;
-      color: white;
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.2s;
-    }
-    .vrag-close-btn:hover { background: rgba(255,255,255,0.3); }
-
-    .vrag-messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-height: 300px;
-      max-height: 360px;
+    @keyframes vrag-open {
+      from { opacity:0; transform:scale(.88) translateY(16px); }
+      to   { opacity:1; transform:scale(1)   translateY(0); }
     }
 
-    .vrag-msg {
-      max-width: 85%;
-      padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 13px;
-      line-height: 1.5;
-      word-wrap: break-word;
-      animation: vragMsgIn 0.2s ease-out;
-    }
-    @keyframes vragMsgIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .vrag-msg.user {
-      align-self: flex-end;
-      background: var(--vrag-primary);
-      color: white;
-      border-bottom-right-radius: 4px;
-    }
-    .vrag-msg.ai {
-      align-self: flex-start;
-      background: var(--vrag-bg-secondary);
-      color: var(--vrag-text);
-      border: 1px solid var(--vrag-border);
-      border-bottom-left-radius: 4px;
-    }
-
-    .vrag-msg.typing .vrag-dots { display: inline-flex; gap: 4px; }
-    .vrag-msg.typing .vrag-dot {
-      width: 6px; height: 6px;
-      background: var(--vrag-text-secondary);
-      border-radius: 50%;
-      animation: vragBounce 1.4s ease-in-out infinite;
-    }
-    .vrag-msg.typing .vrag-dot:nth-child(2) { animation-delay: 0.2s; }
-    .vrag-msg.typing .vrag-dot:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes vragBounce {
-      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-      40% { transform: scale(1); opacity: 1; }
-    }
-
-    .vrag-input-area {
-      padding: 12px 16px;
-      border-top: 1px solid var(--vrag-border);
-      display: flex;
-      gap: 8px;
-      background: var(--vrag-bg);
-    }
-    .vrag-input {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid var(--vrag-border);
-      background: var(--vrag-bg-secondary);
-      color: var(--vrag-text);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .vrag-input:focus { border-color: var(--vrag-primary); }
-    .vrag-input::placeholder { color: var(--vrag-text-secondary); }
-
-    .vrag-send {
-      width: 38px; height: 38px;
-      border-radius: 10px;
-      background: var(--vrag-primary);
-      color: white;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.2s;
+    /* ─── Header ────────────────────────────────────────────────── */
+    #vrag-head {
+      padding: 14px 16px;
+      background: var(--pg);
+      display: flex; align-items: center; gap: 10px;
       flex-shrink: 0;
     }
-    .vrag-send:hover { background: var(--vrag-primary-hover); }
-    .vrag-send:disabled { opacity: 0.5; cursor: not-allowed; }
-    .vrag-send svg { width: 16px; height: 16px; }
+    #vrag-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0; color: #fff;
+      font-weight: 600; letter-spacing: -0.5px;
+    }
+    #vrag-head-text { flex: 1; min-width: 0; }
+    #vrag-name {
+      font-size: 14px; font-weight: 600; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #vrag-status {
+      font-size: 11px; color: rgba(255,255,255,0.75);
+      display: flex; align-items: center; gap: 5px; margin-top: 2px;
+    }
+    #vrag-status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #51cf66;
+      box-shadow: 0 0 6px rgba(81,207,102,0.9);
+    }
+    #vrag-x {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(255,255,255,0.16);
+      cursor: pointer; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background .2s;
+      font-size: 15px; line-height: 1; background-color: transparent;
+    }
+    #vrag-x:hover { background: rgba(255,255,255,0.28); }
 
-    .vrag-powered {
-      text-align: center;
-      padding: 6px;
-      font-size: 10px;
-      color: var(--vrag-text-secondary);
-      opacity: 0.6;
+    /* ─── Messages ──────────────────────────────────────────────── */
+    #vrag-msgs {
+      flex: 1; overflow-y: auto;
+      padding: 16px; display: flex; flex-direction: column; gap: 10px;
+      min-height: 280px; max-height: 360px;
+      scrollbar-width: thin; scrollbar-color: var(--bg3) transparent;
+    }
+    #vrag-msgs::-webkit-scrollbar { width: 4px; }
+    #vrag-msgs::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 4px; }
+
+    .vb {
+      max-width: 83%;
+      padding: 9px 13px; border-radius: 16px;
+      font-size: 13px; line-height: 1.55; word-wrap: break-word;
+      animation: vrag-msg .2s ease-out;
+    }
+    @keyframes vrag-msg {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .vb.u { align-self:flex-end; background:var(--pg); color:#fff; border-bottom-right-radius:4px; }
+    .vb.a { align-self:flex-start; background:var(--bg2); color:var(--tx); border:1px solid var(--bd); border-bottom-left-radius:4px; }
+    .vb.e { align-self:flex-start; background:rgba(255,71,87,0.1); color:#ff6b6b; border:1px solid rgba(255,71,87,0.2); border-bottom-left-radius:4px; font-size:12px; }
+
+    /* typing dots */
+    .vdots { display:inline-flex; gap:4px; align-items:center; height:16px; }
+    .vd {
+      width:6px; height:6px; border-radius:50%; background:var(--tx2);
+      animation:vrag-dot 1.3s ease-in-out infinite;
+    }
+    .vd:nth-child(2){animation-delay:.15s} .vd:nth-child(3){animation-delay:.3s}
+    @keyframes vrag-dot {
+      0%,60%,100%{transform:translateY(0);opacity:.4}
+      30%{transform:translateY(-5px);opacity:1}
     }
 
-    @media (max-width: 440px) {
-      #vrag-chat-window { width: calc(100vw - 40px); }
+    /* ─── Input ─────────────────────────────────────────────────── */
+    #vrag-foot {
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--bd);
+      display: flex; align-items: flex-end; gap: 8px;
+      background: var(--bg); flex-shrink: 0;
+    }
+    #vrag-in {
+      flex: 1;
+      padding: 9px 14px;
+      border-radius: 22px;
+      border: 1px solid var(--bd);
+      background: var(--bg2);
+      color: var(--tx);
+      font-size: 13px; font-family: inherit;
+      resize: none; min-height: 38px; max-height: 96px;
+      line-height: 1.45; transition: border-color .2s;
+      background-color: var(--bg2);
+    }
+    #vrag-in:focus { border-color: var(--p); }
+    #vrag-in::placeholder { color: var(--tx2); }
+    #vrag-go {
+      width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+      background: var(--pg);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 10px rgba(108,92,231,0.4);
+      transition: transform .2s, opacity .2s;
+      background-color: transparent;
+    }
+    #vrag-go:hover:not([disabled]) { transform: scale(1.1); }
+    #vrag-go[disabled] { opacity: .4; cursor: not-allowed; }
+    #vrag-go svg { width:15px; height:15px; }
+
+    /* ─── Powered by ────────────────────────────────────────────── */
+    #vrag-pw {
+      text-align: center; padding: 5px 0 8px;
+      font-size: 10px; color: var(--tx2); opacity: .45;
+      letter-spacing: .03em; flex-shrink: 0;
+    }
+
+    @media (max-width: 420px) {
+      #vrag-win { width: calc(100vw - 20px); border-radius: 16px; }
     }
   `;
-  document.head.appendChild(style);
 
-  // Build DOM
-  const container = document.createElement('div');
-  container.id = 'vrag-widget-container';
+  const sEl = document.createElement('style');
+  sEl.textContent = css;
+  document.head.appendChild(sEl);
 
-  container.innerHTML = `
-    <div id="vrag-chat-window">
-      <div class="vrag-header">
-        <div>
-          <div class="vrag-header-title">AI Assistant</div>
-          <div class="vrag-header-sub">Powered by VoiceRAG</div>
+  /* ── DOM ──────────────────────────────────────────────────────── */
+  const root = document.createElement('div');
+  root.id = 'vrag-root';
+  root.innerHTML = `
+    <div id="vrag-win">
+      <div id="vrag-head">
+        <div id="vrag-avatar">AI</div>
+        <div id="vrag-head-text">
+          <div id="vrag-name">AI Assistant</div>
+          <div id="vrag-status">
+            <div id="vrag-status-dot"></div>
+            <span>Online · Ready to help</span>
+          </div>
         </div>
-        <button class="vrag-close-btn" id="vrag-close">&times;</button>
+        <button id="vrag-x" title="Close">&#x2715;</button>
       </div>
-      <div class="vrag-messages" id="vrag-messages">
-        <div class="vrag-msg ai">Hi! How can I help you today?</div>
+      <div id="vrag-msgs">
+        <div class="vb a">Hi! How can I help you today?</div>
       </div>
-      <div class="vrag-input-area">
-        <input class="vrag-input" id="vrag-input" placeholder="Type a message..." autocomplete="off" />
-        <button class="vrag-send" id="vrag-send">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="m22 2-7 20-4-9-9-4z"/><path d="m22 2-11 11"/>
+      <div id="vrag-foot">
+        <textarea id="vrag-in" rows="1" placeholder="Type a message…" autocomplete="off"></textarea>
+        <button id="vrag-go" title="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
         </button>
       </div>
-      <div class="vrag-powered">Powered by VoiceRAG</div>
+      <div id="vrag-pw">Powered by VoiceRAG</div>
     </div>
-    <button id="vrag-toggle">
-      <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    <button id="vrag-btn" title="Chat with us">
+      <div id="vrag-dot"></div>
+      <span id="vrag-btn-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </span>
     </button>
   `;
+  document.body.appendChild(root);
 
-  document.body.appendChild(container);
+  /* ── Refs ─────────────────────────────────────────────────────── */
+  const $win  = document.getElementById('vrag-win');
+  const $btn  = document.getElementById('vrag-btn');
+  const $x    = document.getElementById('vrag-x');
+  const $msgs = document.getElementById('vrag-msgs');
+  const $in   = document.getElementById('vrag-in');
+  const $go   = document.getElementById('vrag-go');
+  const $dot  = document.getElementById('vrag-dot');
+  const $name = document.getElementById('vrag-name');
+  const $av   = document.getElementById('vrag-avatar');
 
-  // State
-  let sessionId = null;
-  let isOpen = false;
+  /* ── State ────────────────────────────────────────────────────── */
+  let sid   = null;   // session id
+  let busy  = false;
+  let open  = false;
 
-  const toggle = document.getElementById('vrag-toggle');
-  const chatWindow = document.getElementById('vrag-chat-window');
-  const closeBtn = document.getElementById('vrag-close');
-  const messagesEl = document.getElementById('vrag-messages');
-  const input = document.getElementById('vrag-input');
-  const sendBtn = document.getElementById('vrag-send');
-
-  // Toggle chat
-  function toggleChat() {
-    isOpen = !isOpen;
-    chatWindow.classList.toggle('open', isOpen);
-    if (isOpen) input.focus();
+  /* ── Open / Close ─────────────────────────────────────────────── */
+  function openWin() {
+    open = true;
+    $win.classList.add('open');
+    $btn.classList.add('open');
+    $dot.classList.remove('on');
+    setTimeout(() => $in.focus(), 60);
   }
-  toggle.addEventListener('click', toggleChat);
-  closeBtn.addEventListener('click', toggleChat);
+  function closeWin() {
+    open = false;
+    $win.classList.remove('open');
+    $btn.classList.remove('open');
+  }
+  $btn.addEventListener('click', () => open ? closeWin() : openWin());
+  $x.addEventListener('click', closeWin);
 
-  // Add message to UI
-  function addMessage(text, type) {
-    const msg = document.createElement('div');
-    msg.className = 'vrag-msg ' + type;
-    msg.textContent = text;
-    messagesEl.appendChild(msg);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return msg;
+  /* ── Messages ─────────────────────────────────────────────────── */
+  function addMsg(text, cls) {
+    const el = document.createElement('div');
+    el.className = 'vb ' + cls;
+    el.textContent = text;
+    $msgs.appendChild(el);
+    $msgs.scrollTop = $msgs.scrollHeight;
   }
 
   function showTyping() {
-    const msg = document.createElement('div');
-    msg.className = 'vrag-msg ai typing';
-    msg.id = 'vrag-typing';
-    msg.innerHTML = '<div class="vrag-dots"><div class="vrag-dot"></div><div class="vrag-dot"></div><div class="vrag-dot"></div></div>';
-    messagesEl.appendChild(msg);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    const el = document.createElement('div');
+    el.className = 'vb a'; el.id = 'vrag-tp';
+    el.innerHTML = '<div class="vdots"><div class="vd"></div><div class="vd"></div><div class="vd"></div></div>';
+    $msgs.appendChild(el);
+    $msgs.scrollTop = $msgs.scrollHeight;
   }
+  function hideTyping() { document.getElementById('vrag-tp')?.remove(); }
 
-  function hideTyping() {
-    const el = document.getElementById('vrag-typing');
-    if (el) el.remove();
-  }
+  /* Auto-grow textarea */
+  $in.addEventListener('input', () => {
+    $in.style.height = 'auto';
+    $in.style.height = Math.min($in.scrollHeight, 96) + 'px';
+  });
 
-  // Send message
-  async function sendMessage() {
-    const text = input.value.trim();
-    if (!text) return;
+  /* ── Send ─────────────────────────────────────────────────────── */
+  async function send() {
+    const text = $in.value.trim();
+    if (!text || busy) return;
 
-    input.value = '';
-    addMessage(text, 'user');
-    sendBtn.disabled = true;
+    $in.value = ''; $in.style.height = 'auto';
+    busy = true; $go.setAttribute('disabled', '');
+
+    addMsg(text, 'u');
     showTyping();
 
     try {
       const res = await fetch(API_URL + '/widget/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': API_KEY,
-        },
-        body: JSON.stringify({
-          message: text,
-          session_id: sessionId,
-        }),
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({ message: text, session_id: sid }),
       });
 
       hideTyping();
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        addMessage(err.detail || 'Something went wrong. Please try again.', 'ai');
-        return;
+        addMsg(err.detail || 'Something went wrong. Please try again.', 'e');
+      } else {
+        const data = await res.json();
+        sid = data.session_id;
+        addMsg(data.answer, 'a');
+        if (!open) $dot.classList.add('on');
       }
-
-      const data = await res.json();
-      sessionId = data.session_id;
-      addMessage(data.answer, 'ai');
-    } catch (e) {
+    } catch (_) {
       hideTyping();
-      addMessage('Connection error. Please check your internet.', 'ai');
+      addMsg('Unable to reach the server. Please try again.', 'e');
     } finally {
-      sendBtn.disabled = false;
+      busy = false; $go.removeAttribute('disabled'); $in.focus();
     }
   }
 
-  sendBtn.addEventListener('click', sendMessage);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  $go.addEventListener('click', send);
+  $in.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
 
-  // Fetch config to customize header
-  (async function() {
+  /* ── Config ───────────────────────────────────────────────────── */
+  (async () => {
     try {
       const res = await fetch(API_URL + '/widget/config', {
         headers: { 'X-API-Key': API_KEY },
       });
-      if (res.ok) {
-        const cfg = await res.json();
-        if (cfg.company_name) {
-          container.querySelector('.vrag-header-title').textContent = cfg.company_name + ' Assistant';
-        }
+      if (!res.ok) return;
+      const cfg = await res.json();
+      if (cfg.company_name) {
+        const first = cfg.company_name.trim()[0].toUpperCase();
+        $name.textContent = cfg.company_name + ' Assistant';
+        $av.textContent = first;
       }
-    } catch(e) {}
+    } catch (_) {}
   })();
 
-  console.log('VoiceRAG Widget loaded successfully');
+  console.log('[VoiceRAG] Widget ready');
 })();
 """.strip()
 
@@ -366,8 +385,5 @@ def serve_widget():
     return Response(
         content=WIDGET_JS,
         media_type="application/javascript",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "Access-Control-Allow-Origin": "*",
-        },
+        headers={"Cache-Control": "no-cache"},
     )

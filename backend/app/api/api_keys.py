@@ -1,6 +1,6 @@
 """
-API Key management routes.
-Clients can create, list, and revoke API keys for widget authentication.
+Embed Key management routes.
+Each tenant has exactly ONE website embed key used for widget/plugin integration.
 """
 
 import logging
@@ -16,11 +16,7 @@ from app.models.database import Client, APIKey
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api-keys", tags=["API Keys"])
-
-
-class CreateKeyRequest(BaseModel):
-    name: str = "Default Key"
+router = APIRouter(prefix="/api-keys", tags=["Embed Key"])
 
 
 class KeyResponse(BaseModel):
@@ -34,36 +30,56 @@ class KeyResponse(BaseModel):
 
 
 class NewKeyResponse(KeyResponse):
-    full_key: str  # Only shown once at creation!
+    full_key: str  # Only shown once at creation / regeneration
 
 
-@router.post("", response_model=NewKeyResponse)
-def create_api_key(
-    req: CreateKeyRequest,
+def _key_response(k: APIKey) -> KeyResponse:
+    return KeyResponse(
+        id=k.id,
+        name=k.name,
+        key_prefix=k.key_prefix,
+        is_active=k.is_active,
+        created_at=k.created_at.isoformat(),
+        last_used_at=k.last_used_at.isoformat() if k.last_used_at else None,
+        usage_count=k.usage_count,
+    )
+
+
+@router.get("", response_model=list[KeyResponse])
+def get_embed_key(
     current_client: Client = Depends(get_current_client),
     db: Session = Depends(get_db),
 ):
-    """Generate a new API key for the current client."""
-    # Limit keys per client
-    active_count = (
+    """Return the tenant's embed key (at most one active)."""
+    keys = (
         db.query(APIKey)
-        .filter(
-            APIKey.client_id == current_client.id,
-            APIKey.is_active == True,
-        )
-        .count()
+        .filter(APIKey.client_id == current_client.id)
+        .order_by(APIKey.created_at.desc())
+        .all()
     )
+    return [_key_response(k) for k in keys]
 
-    if active_count >= 5:
-        raise HTTPException(
-            status_code=400, detail="Maximum 5 active API keys per account"
-        )
+
+@router.post("/regenerate", response_model=NewKeyResponse)
+def regenerate_embed_key(
+    current_client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    """
+    Atomically revoke the existing embed key and generate a new one.
+    The full key is returned once — it cannot be retrieved again.
+    """
+    # Revoke all active keys
+    db.query(APIKey).filter(
+        APIKey.client_id == current_client.id,
+        APIKey.is_active == True,
+    ).update({"is_active": False}, synchronize_session=False)
+    db.commit()
 
     full_key, key_prefix, key_hash = APIKey.generate_key()
-
     api_key = APIKey(
         client_id=current_client.id,
-        name=req.name.strip() or "Default Key",
+        name="Website Embed Key",
         key_prefix=key_prefix,
         key_hash=key_hash,
     )
@@ -71,9 +87,7 @@ def create_api_key(
     db.commit()
     db.refresh(api_key)
 
-    logger.info(
-        f"[APIKey] Created key {key_prefix}... for client {current_client.email}"
-    )
+    logger.info(f"[EmbedKey] Regenerated key {key_prefix}... for {current_client.email}")
 
     return NewKeyResponse(
         id=api_key.id,
@@ -87,58 +101,23 @@ def create_api_key(
     )
 
 
-@router.get("", response_model=list[KeyResponse])
-def list_api_keys(
-    current_client: Client = Depends(get_current_client),
-    db: Session = Depends(get_db),
-):
-    """List all API keys for the current client."""
-    keys = (
-        db.query(APIKey)
-        .filter(
-            APIKey.client_id == current_client.id,
-        )
-        .order_by(APIKey.created_at.desc())
-        .all()
-    )
-
-    return [
-        KeyResponse(
-            id=k.id,
-            name=k.name,
-            key_prefix=k.key_prefix,
-            is_active=k.is_active,
-            created_at=k.created_at.isoformat(),
-            last_used_at=k.last_used_at.isoformat() if k.last_used_at else None,
-            usage_count=k.usage_count,
-        )
-        for k in keys
-    ]
-
-
 @router.delete("/{key_id}")
-def revoke_api_key(
+def revoke_embed_key(
     key_id: str,
     current_client: Client = Depends(get_current_client),
     db: Session = Depends(get_db),
 ):
-    """Revoke (deactivate) an API key."""
+    """Revoke the embed key (admin use / emergency)."""
     api_key = (
         db.query(APIKey)
-        .filter(
-            APIKey.id == key_id,
-            APIKey.client_id == current_client.id,
-        )
+        .filter(APIKey.id == key_id, APIKey.client_id == current_client.id)
         .first()
     )
-
     if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise HTTPException(status_code=404, detail="Embed key not found")
 
     api_key.is_active = False
     db.commit()
 
-    logger.info(
-        f"[APIKey] Revoked key {api_key.key_prefix}... for client {current_client.email}"
-    )
-    return {"message": "API key revoked"}
+    logger.info(f"[EmbedKey] Revoked key {api_key.key_prefix}... for {current_client.email}")
+    return {"message": "Embed key revoked"}

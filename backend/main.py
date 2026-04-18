@@ -9,9 +9,37 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from app.core.config import settings
 from app.core.database import init_db
+
+
+class WidgetCORSMiddleware(BaseHTTPMiddleware):
+    """
+    Allows cross-origin requests to /widget/* and /widget.js from any origin.
+    Must be added AFTER CORSMiddleware so it executes FIRST (outermost wrapper).
+    """
+    _HEADERS = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-API-Key",
+        "Access-Control-Max-Age": "86400",
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        is_widget = path == "/widget.js" or path.startswith("/widget/")
+        if not is_widget:
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return Response(status_code=200, headers=self._HEADERS)
+        response = await call_next(request)
+        for k, v in self._HEADERS.items():
+            response.headers[k] = v
+        return response
 
 # Routers — MVP (single-user, backward-compat)
 from app.api.documents import router as document_router
@@ -49,6 +77,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Widget CORS must be added AFTER CORSMiddleware so it wraps it (runs first)
+app.add_middleware(WidgetCORSMiddleware)
 
 # ─── Routers ──────────────────────────────────────────────────────────
 
