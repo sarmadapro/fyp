@@ -6,9 +6,11 @@ embeddable widget, and analytics.
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -31,7 +33,7 @@ class WidgetCORSMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        is_widget = path == "/widget.js" or path.startswith("/widget/")
+        is_widget = path == "/widget.js" or path.startswith("/widget/") or path.startswith("/vad/")
         if not is_widget:
             return await call_next(request)
         if request.method == "OPTIONS":
@@ -95,6 +97,13 @@ app.include_router(widget_router)
 app.include_router(portal_router)
 app.include_router(widget_embed_router)
 app.include_router(admin_router)
+
+# Serve VAD assets (Silero models, ONNX WASM, worklet) for the embedded widget.
+# Widget JS on third-party sites loads these from this backend instead of the
+# frontend's /public directory (which is inaccessible cross-origin).
+_VAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "public")
+if os.path.isdir(_VAD_DIR):
+    app.mount("/vad", StaticFiles(directory=_VAD_DIR), name="vad-assets")
 
 
 # ─── Health ───────────────────────────────────────────────────────────
