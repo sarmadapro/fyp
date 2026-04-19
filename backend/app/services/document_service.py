@@ -19,6 +19,10 @@ import os
 import json
 import shutil
 import logging
+
+import torch
+
+_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -68,7 +72,7 @@ class DocumentService:
             logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
             self._embeddings = HuggingFaceEmbeddings(
                 model_name=settings.EMBEDDING_MODEL,
-                model_kwargs={"device": "cpu"},
+                model_kwargs={"device": _DEVICE},
                 encode_kwargs={"normalize_embeddings": True},
             )
             logger.info("Embedding model loaded.")
@@ -640,7 +644,7 @@ class ClientDocumentService(DocumentService):
             logger.info(f"Loading shared embedding model: {settings.EMBEDDING_MODEL}")
             ClientDocumentService._shared_embeddings = HuggingFaceEmbeddings(
                 model_name=settings.EMBEDDING_MODEL,
-                model_kwargs={"device": "cpu"},
+                model_kwargs={"device": _DEVICE},
                 encode_kwargs={"normalize_embeddings": True},
             )
             logger.info("Shared embedding model loaded.")

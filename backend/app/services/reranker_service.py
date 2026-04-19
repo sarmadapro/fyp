@@ -18,7 +18,11 @@ Design notes:
 import logging
 from typing import Iterable
 
+import torch
+
 logger = logging.getLogger(__name__)
+
+_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class Reranker:
@@ -43,7 +47,8 @@ class Reranker:
         try:
             from sentence_transformers import CrossEncoder
             logger.info(f"Loading reranker model: {self.DEFAULT_MODEL}")
-            self._model = CrossEncoder(self.DEFAULT_MODEL, device="cpu", max_length=512)
+            self._model = CrossEncoder(self.DEFAULT_MODEL, device=_DEVICE, max_length=512)
+            logger.info(f"Reranker running on: {_DEVICE}")
             logger.info("Reranker loaded.")
         except Exception as e:
             self._load_failed = True
