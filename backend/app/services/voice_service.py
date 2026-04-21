@@ -73,9 +73,15 @@ async def check_tts_health() -> bool:
 #  STT / TTS Microservice Calls
 # ---------------------------------------------------------------------------
 
-async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.wav") -> dict:
+async def transcribe_audio(
+    audio_bytes: bytes,
+    filename: str = "audio.wav",
+    language: str | None = None,
+) -> dict:
     """
     Send audio to the STT microservice for transcription.
+    `language` pins Whisper to a specific language (e.g. "en", "hi", "ur").
+    Pass None or "auto" to let Whisper auto-detect.
     Returns: {"text": str, "language": str, "duration": float}
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "wav"
@@ -88,13 +94,18 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.wav") -> d
     }
     content_type = content_types.get(ext, "audio/wav")
 
-    logger.info(f"[STT] Sending {len(audio_bytes)} bytes as {filename} ({content_type})")
+    logger.info(f"[STT] Sending {len(audio_bytes)} bytes as {filename} ({content_type}), lang={language or 'auto'}")
 
     client = _get_http_client()
     files = {"file": (filename, audio_bytes, content_type)}
+    data = {}
+    if language and language != "auto":
+        data["language"] = language
+
     response = await client.post(
         f"{settings.STT_SERVICE_URL}/transcribe",
         files=files,
+        data=data,
     )
     response.raise_for_status()
     result = response.json()
@@ -335,7 +346,7 @@ def _resolve_doc_service(client_id: str | None):
         return None
     return ClientDocumentService.get_or_create(client_id)
 
-async def handle_voice_conversation(websocket: WebSocket, client=None):
+async def handle_voice_conversation(websocket: WebSocket, client=None, language: str | None = None):
     """
     Main conversational voice loop over WebSocket.
 
@@ -440,6 +451,7 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
                         turn_state,
                         filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
+                        language=language,
                     )
                 )
 
@@ -486,6 +498,7 @@ async def handle_voice_conversation(websocket: WebSocket, client=None):
                         turn_state,
                         filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
+                        language=language,
                     )
                 )
 
@@ -529,6 +542,7 @@ async def _run_turn(
     turn_state: dict,
     filename: str = "recording.wav",
     doc_service=None,
+    language: str | None = None,
 ) -> None:
     """
     Wrapper that runs _process_voice_turn as a background task so the main
@@ -545,6 +559,7 @@ async def _run_turn(
             turn_state.get("conv_id"),
             filename=filename,
             doc_service=doc_service,
+            language=language,
         )
         if new_conv_id:
             turn_state["conv_id"] = new_conv_id
@@ -575,6 +590,7 @@ async def _process_voice_turn(
     conversation_id: str | None,
     filename: str = "recording.wav",
     doc_service=None,
+    language: str | None = None,
 ) -> str | None:
     """
     Process a single voice turn:
@@ -593,7 +609,7 @@ async def _process_voice_turn(
 
     try:
         transcription = await asyncio.wait_for(
-            transcribe_audio(audio_bytes, filename),
+            transcribe_audio(audio_bytes, filename, language=language),
             timeout=_STT_TURN_TIMEOUT_SEC,
         )
         user_text = transcription.get("text", "").strip()

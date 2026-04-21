@@ -93,6 +93,7 @@ async def voice_chat_endpoint(
 async def voice_conversation_endpoint(
     websocket: WebSocket,
     token: str | None = Query(default=None),
+    language: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """
@@ -128,7 +129,7 @@ async def voice_conversation_endpoint(
     logger.info(f"Voice conversation WebSocket connected (client={client.id})")
 
     try:
-        await handle_voice_conversation(websocket, client=client)
+        await handle_voice_conversation(websocket, client=client, language=language or None)
     except WebSocketDisconnect:
         logger.info(f"Voice conversation WebSocket disconnected (client={client.id})")
     except Exception as e:

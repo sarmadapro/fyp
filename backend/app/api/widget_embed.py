@@ -266,6 +266,17 @@ WIDGET_JS = r"""
   font-size:11px;color:var(--vtx2);\
   text-align:center;\
 }\
+#vrag-langbar{\
+  display:flex;align-items:center;gap:6px;\
+  font-size:11.5px;color:var(--vtx2);\
+}\
+#vrag-langsel{\
+  background:var(--vbg2);color:var(--vtx);\
+  border:1px solid var(--vbd);border-radius:8px;\
+  padding:3px 7px;font-size:11.5px;cursor:pointer;\
+  outline:none;color-scheme:dark;\
+}\
+#vrag-langsel:focus{border-color:rgba(108,92,231,0.5);}\
 #vrag-pw{\
   text-align:center;padding:5px 0 8px;\
   font-size:10px;color:var(--vtx2);opacity:.45;\
@@ -307,6 +318,15 @@ WIDGET_JS = r"""
     <div id="vrag-vstatus">Connecting...</div>\
     <div id="vrag-vhint">Click the mic to stop voice mode</div>\
   </div>\
+  <div id="vrag-langbar" style="display:none;justify-content:center;padding:0 14px 10px;gap:6px;align-items:center;">\
+    <span style="font-size:11px;color:var(--vtx2);">Language:</span>\
+    <select id="vrag-langsel">\
+      <option value="auto">Auto-detect</option>\
+      <option value="en">English</option>\
+      <option value="hi">Hindi / Urdu</option>\
+      <option value="ur">Urdu (script)</option>\
+    </select>\
+  </div>\
   <div id="vrag-foot">\
     <button id="vrag-mic" class="vrag-icon-btn" title="Voice assistant">\
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\
@@ -340,6 +360,7 @@ WIDGET_JS = r"""
   var $msgs = g('vrag-msgs'), $in = g('vrag-in'), $go = g('vrag-go');
   var $mic = g('vrag-mic'), $vp = g('vrag-voice-panel'), $unread = g('vrag-unread');
   var $nm = g('vrag-nm'), $av = g('vrag-av'), $vstatus = g('vrag-vstatus');
+  var $langbar = g('vrag-langbar'), $langsel = g('vrag-langsel');
 
   /* ─── State ─────────────────────────────────────────────────────────── */
   var sid = null, busy = false, isOpen = false;
@@ -691,6 +712,12 @@ WIDGET_JS = r"""
   /* ── Status display ── */
   function setVStatus(text) { if ($vstatus) $vstatus.textContent = text; }
 
+  /* ── Show language bar when widget is closed (before voice starts) ── */
+  function syncLangBar() {
+    if ($langbar) $langbar.style.display = voiceMode ? 'none' : 'flex';
+  }
+  syncLangBar();
+
   /* ── Start full voice pipeline ── */
   function startVoice() {
     if (vadLoading || voiceMode) return;
@@ -699,9 +726,12 @@ WIDGET_JS = r"""
     $in.style.display = 'none';
     $go.style.display = 'none';
     $mic.classList.add('voice');
+    if ($langbar) $langbar.style.display = 'none';
     setVStatus('Connecting...');
 
-    ws = new WebSocket(WS_URL + '/widget/voice/ws?api_key=' + encodeURIComponent(API_KEY));
+    var lang = $langsel ? $langsel.value : 'auto';
+    var langParam = (lang && lang !== 'auto') ? '&language=' + encodeURIComponent(lang) : '';
+    ws = new WebSocket(WS_URL + '/widget/voice/ws?api_key=' + encodeURIComponent(API_KEY) + langParam);
 
     ws.onopen = function() {
       console.log('[VoiceRAG] WS connected');
@@ -809,6 +839,7 @@ WIDGET_JS = r"""
     $mic.classList.remove('voice');
     $mic.classList.remove('speaking');
     setVStatus('Connecting...');
+    if ($langbar) $langbar.style.display = 'flex';
     $in.focus();
   }
 

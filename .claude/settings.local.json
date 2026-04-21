@@ -2,7 +2,31 @@
   "permissions": {
     "allow": [
       "Bash(python -c \"import ast; ast.parse\\(open\\('app/services/document_service.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python -c \"import ast; [ast.parse\\(open\\(p, encoding='utf-8'\\).read\\(\\)\\) for p in ['app/api/voice.py', 'app/services/voice_service.py']]; print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p, encoding='utf-8'\\).read\\(\\)\\) for p in ['app/api/voice.py', 'app/services/voice_service.py']]; print\\('OK'\\)\")",
+      "Bash(python test_extraction.py \"C:\\\\Users\\\\USER\\\\Documents\\\\fyp\\\\backend\\\\data\\\\clients\\\\09425e4c-1b40-428d-9b2e-a2da5b222364\\\\uploads\\\\azadkaroar.pdf\")",
+      "Read(//c/Users/USER/Downloads/**)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(m['name'], m['size']//1e9, 'GB'\\) for m in data.get\\('models',[]\\)]\")",
+      "Bash(npm run *)",
+      "Bash(python -c \"from app.api.api_keys import router; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/api_keys.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('main.py OK'\\); ast.parse\\(open\\('app/api/widget_embed.py'\\).read\\(\\)\\); print\\('widget_embed.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/widget.py'\\).read\\(\\)\\); print\\('widget.py OK'\\); ast.parse\\(open\\('app/api/widget_embed.py'\\).read\\(\\)\\); print\\('widget_embed.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/widget_embed.py'\\).read\\(\\)\\); print\\('widget_embed.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/widget.py'\\).read\\(\\)\\); print\\('widget.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('main.py'\\).read\\(\\)\\); print\\('main.py: OK'\\)\")",
+      "Bash(powershell -Command \"Get-WmiObject Win32_VideoController | Select-Object Name, AdapterRAM | Format-List\")",
+      "Bash(nvidia-smi)",
+      "Bash(pip show *)",
+      "Bash(\"c:/Users/USER/Documents/fyp/backend/venv/Scripts/python.exe\" -c \"import torch; print\\('torch:', torch.__version__\\)\")",
+      "Bash(venv/Scripts/python.exe -c \"from app.core.config import settings; print\\('Provider:', settings.LLM_PROVIDER\\); print\\('Model:', settings.LLM_MODEL\\)\")",
+      "Bash(curl -s http://localhost:11434/api/ps)",
+      "Bash(curl -s http://localhost:11434/api/show -d '{\"name\":\"qwen2.5:7b\"}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); info=d.get\\('model_info',{}\\); print\\('Params:', info.get\\('general.parameter_count', 'unknown'\\)\\); det=d.get\\('details',{}\\); print\\('Quant:', det.get\\('quantization_level','?'\\)\\); print\\('Size:', det.get\\('parameter_size','?'\\)\\)\")",
+      "Bash(curl -s http://localhost:11434/api/generate -d '{\"model\":\"qwen2.5:7b\",\"prompt\":\"hi\",\"stream\":false}')",
+      "Bash(wait)"
     ]
   }
 }

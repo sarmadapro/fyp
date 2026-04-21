@@ -8,6 +8,8 @@ import { Toaster } from 'react-hot-toast';
 // Public Pages
 import LandingPage from './pages/LandingPage';
 import PipelinePage from './pages/PipelinePage';
+import PricingPage from './pages/PricingPage';
+import DocsPage from './pages/DocsPage';
 import AuthPage from './pages/AuthPage';
 
 // Portal Pages
@@ -16,6 +18,12 @@ import ChatPage from './pages/ChatPage';
 import VoicePage from './pages/VoicePage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import APIKeysPage from './pages/APIKeysPage';
+
+// Admin Panel
+import AdminApp from './admin/AdminApp';
+
+// Detect admin mode: URL hash starts with #admin
+const _isAdminMode = () => window.location.hash.startsWith('#admin');
 
 import {
   isAuthenticated, logout, getSavedClient,
@@ -31,6 +39,24 @@ const PORTAL_PAGES = {
 };
 
 export default function App() {
+  const [adminMode, setAdminMode] = useState(_isAdminMode());
+
+  // Listen for hash changes to toggle admin mode
+  useEffect(() => {
+    const handler = () => setAdminMode(_isAdminMode());
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, []);
+
+  if (adminMode) {
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ style: toastStyle }} />
+        <AdminApp onExitAdmin={() => { window.location.hash = ''; setAdminMode(false); }} />
+      </>
+    );
+  }
+
   const [currentView, setCurrentView] = useState(
     isAuthenticated() ? 'portal' : 'landing'
   );
@@ -100,6 +126,24 @@ export default function App() {
       <>
         <Toaster position="top-right" toastOptions={{ style: toastStyle }} />
         <PipelinePage onNavigate={handleNavigate} />
+      </>
+    );
+  }
+
+  if (currentView === 'pricing') {
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ style: toastStyle }} />
+        <PricingPage onNavigate={handleNavigate} />
+      </>
+    );
+  }
+
+  if (currentView === 'docs') {
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ style: toastStyle }} />
+        <DocsPage onNavigate={handleNavigate} />
       </>
     );
   }

@@ -39,16 +39,15 @@ class Settings:
     ).split(",")
 
     # --- LLM Configuration ---
-    # Priority: if GROQ_API_KEY is set → groq; else LLM_PROVIDER env var; else ollama
+    # Priority: DeepSeek → Groq → Ollama
+    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", os.getenv("LLM_MODEL", "qwen2.5:0.5b"))
-
-    # DEEPSEEK kept for backwards-compatibility
-    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
-    DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
@@ -96,30 +95,30 @@ class Settings:
         self.CLIENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         # Resolve LLM provider with priority:
-        # 1. Groq (if API key present and not placeholder)
-        # 2. Explicit LLM_PROVIDER env var
-        # 3. Ollama (default)
-        _explicit_provider = os.getenv("LLM_PROVIDER", "").lower()
-
+        # 1. DeepSeek (if DEEPSEEK_API_KEY present) — primary, 128K context window
+        # 2. Groq (if GROQ_API_KEY present) — fast fallback
+        # 3. Ollama (default) — local offline fallback
+        _deepseek_key_valid = (
+            bool(self.DEEPSEEK_API_KEY)
+            and self.DEEPSEEK_API_KEY not in ("your_deepseek_api_key_here", "")
+        )
         _groq_key_valid = (
             bool(self.GROQ_API_KEY)
             and self.GROQ_API_KEY not in ("your_groq_api_key_here", "")
         )
 
-        if _groq_key_valid:
-            self.LLM_PROVIDER = "groq"
-            self.LLM_MODEL = self.GROQ_MODEL
-            print(f"[CONFIG] LLM: Groq ({self.GROQ_MODEL}) — key detected")
-        elif _explicit_provider == "deepseek" and self.DEEPSEEK_API_KEY:
+        if _deepseek_key_valid:
             self.LLM_PROVIDER = "deepseek"
             self.LLM_MODEL = self.DEEPSEEK_MODEL
-            print(f"[CONFIG] LLM: DeepSeek ({self.DEEPSEEK_MODEL})")
+            print(f"[CONFIG] LLM: DeepSeek ({self.DEEPSEEK_MODEL}) — key detected")
+        elif _groq_key_valid:
+            self.LLM_PROVIDER = "groq"
+            self.LLM_MODEL = self.GROQ_MODEL
+            print(f"[CONFIG] LLM: Groq ({self.GROQ_MODEL}) — DeepSeek key missing, using Groq fallback")
         else:
             self.LLM_PROVIDER = "ollama"
             self.LLM_MODEL = self.OLLAMA_MODEL
-            if _groq_key_valid is False and _explicit_provider == "groq":
-                print("[CONFIG] WARNING: LLM_PROVIDER=groq but GROQ_API_KEY missing — falling back to Ollama")
-            print(f"[CONFIG] LLM: Ollama @ {self.OLLAMA_BASE_URL} ({self.OLLAMA_MODEL})")
+            print(f"[CONFIG] LLM: Ollama @ {self.OLLAMA_BASE_URL} ({self.OLLAMA_MODEL}) — no API keys found")
 
         print(f"[CONFIG] Backend: {self.BACKEND_HOST}:{self.BACKEND_PORT}")
         print(f"[CONFIG] Embedding: {self.EMBEDDING_MODEL}")

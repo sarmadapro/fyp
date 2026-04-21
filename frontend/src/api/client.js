@@ -147,18 +147,15 @@ export async function portalChat(question) {
   return res.json();
 }
 
-// ─── API Keys ──────────────────────────────────────────────────────
+// ─── Embed Key ─────────────────────────────────────────────────────
 
 export async function listAPIKeys() {
   const res = await request('/api-keys');
   return res.json();
 }
 
-export async function createAPIKey(name = 'Default Key') {
-  const res = await request('/api-keys', {
-    method: 'POST',
-    body: JSON.stringify({ name }),
-  });
+export async function regenerateEmbedKey() {
+  const res = await request('/api-keys/regenerate', { method: 'POST' });
   return res.json();
 }
 

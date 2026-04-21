@@ -13,7 +13,7 @@ import asyncio
 import threading
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -143,7 +143,7 @@ async def health():
 
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(file: UploadFile = File(...), language: str | None = Form(default=None)):
     """
     Transcribe an uploaded audio file.
 
@@ -166,6 +166,11 @@ async def transcribe(file: UploadFile = File(...)):
                 detail="STT model is still initializing. Please retry in a few moments.",
             )
 
+        # Normalise language: "auto" or empty → None (Whisper auto-detects)
+        forced_lang = (language or "").strip().lower() or None
+        if forced_lang == "auto":
+            forced_lang = None
+
         def run_transcription(path: str):
             model = get_model()
             start_time = time.time()
@@ -173,7 +178,7 @@ async def transcribe(file: UploadFile = File(...)):
             segments, info = model.transcribe(
                 path,
                 beam_size=5,
-                language=None,
+                language=forced_lang,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
             )

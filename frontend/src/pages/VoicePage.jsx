@@ -1,9 +1,18 @@
 import { useState } from 'react';
-import { Mic, MicOff, Loader2, Volume2, PhoneOff, AlertCircle } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, PhoneOff, AlertCircle, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 
+const LANGUAGES = [
+  { code: 'auto', label: 'Auto-detect' },
+  { code: 'en',   label: 'English' },
+  { code: 'hi',   label: 'Hindi / Urdu' },
+  { code: 'ur',   label: 'Urdu (script)' },
+];
+
 export default function VoicePage() {
+  const [language, setLanguage] = useState('auto');
+
   const {
     isConnected,
     isListening,
@@ -25,7 +34,7 @@ export default function VoicePage() {
       disconnect();
     } else {
       try {
-        await connect();
+        await connect(language === 'auto' ? null : language);
         toast.success('Voice conversation started!');
       } catch (err) {
         toast.error(err.message || 'Failed to start voice conversation');
@@ -65,6 +74,22 @@ export default function VoicePage() {
   return (
     <div className="chat-container">
       <div className="voice-container">
+        {/* Language selector — only shown before connecting */}
+        {!isConnected && (
+          <div className="voice-lang-selector">
+            <Globe size={14} />
+            <select
+              value={language}
+              onChange={e => setLanguage(e.target.value)}
+              className="voice-lang-select"
+            >
+              {LANGUAGES.map(l => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Main Orb */}
         <div className="voice-orb-container">
           <button

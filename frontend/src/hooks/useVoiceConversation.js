@@ -854,7 +854,7 @@ export function useVoiceConversation() {
   }, [stopSpeechChunkStreaming]);
 
   // ── WebSocket Connection ──
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (language = null) => {
     if (wsRef.current) return;
 
     setError(null);
@@ -867,8 +867,9 @@ export function useVoiceConversation() {
       setError('Please log in to use the voice assistant.');
       return;
     }
+    const langParam = language && language !== 'auto' ? `&language=${encodeURIComponent(language)}` : '';
     const ws = new WebSocket(
-      `${WS_BASE}/voice/conversation?token=${encodeURIComponent(token)}`
+      `${WS_BASE}/voice/conversation?token=${encodeURIComponent(token)}${langParam}`
     );
     wsRef.current = ws;
 

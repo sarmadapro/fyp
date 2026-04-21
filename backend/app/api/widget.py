@@ -170,6 +170,7 @@ async def widget_voice(
 async def widget_voice_ws(
     websocket: WebSocket,
     api_key: str = Query(...),
+    language: str | None = Query(default=None),
 ):
     """
     Real-time voice pipeline via embed key — identical to the client portal's
@@ -197,4 +198,4 @@ async def widget_voice_ws(
         return
 
     logger.info(f"[Widget/Voice/WS] client={client_id} session opened")
-    await handle_voice_conversation(websocket, client=client)
+    await handle_voice_conversation(websocket, client=client, language=language or None)
