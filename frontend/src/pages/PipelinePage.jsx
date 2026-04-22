@@ -35,13 +35,13 @@ export default function PipelinePage({ onNavigate }) {
       <section className="pro-hero" style={{ paddingBottom: '60px' }}>
         <div className="pro-hero-eyebrow">Technical Deep Dive</div>
         <div className="pro-hero-badge">
-          <span>Open</span> Architecture — Built for transparency and performance
+          <span>Open</span> Architecture Built for transparency and performance
         </div>
         <h1 className="pro-hero-title">
           Our <span className="hero-gradient-text">Pipeline Architecture</span>
         </h1>
         <p className="pro-hero-subtitle">
-          A fully orchestrated RAG pipeline — from document ingestion to real-time AI voice responses. Here's exactly how every piece fits together under the hood.
+          A fully orchestrated RAG pipeline from document ingestion to real time AI voice responses. Here's exactly how every piece fits together under the hood.
         </p>
       </section>
 
@@ -56,10 +56,10 @@ export default function PipelinePage({ onNavigate }) {
               <div className="pipeline-stage-icon"><FileText size={22} /></div>
               <h3>Document Ingestion</h3>
             </div>
-            <p>Upload PDF, DOCX, or TXT files. We extract text using PyMuPDF and python-docx, then split into optimally-sized chunks using recursive character splitting with intelligent overlap for maximum context retention.</p>
+            <p>Upload PDF, DOCX, or TXT files. We extract text using PyMuPDF and python docx, then split into optimally sized chunks using recursive character splitting with intelligent overlap for maximum context retention.</p>
             <div className="pipeline-tech-tags">
               <span className="tech-tag">PyMuPDF</span>
-              <span className="tech-tag">python-docx</span>
+              <span className="tech-tag">python docx</span>
               <span className="tech-tag">LangChain Splitter</span>
               <span className="tech-tag">Recursive Chunking</span>
             </div>
@@ -74,11 +74,11 @@ export default function PipelinePage({ onNavigate }) {
               <div className="pipeline-stage-icon"><Database size={22} /></div>
               <h3>Vector Embedding &amp; Indexing</h3>
             </div>
-            <p>Each chunk is transformed into a high-dimensional vector using sentence transformers. These vectors are stored in a FAISS index — one per client, completely isolated — enabling instant retrieval with no cross-tenant exposure.</p>
+            <p>Each chunk is transformed into a high dimensional vector using sentence transformers. These vectors are stored in a FAISS index one per client, completely isolated enabling instant retrieval with no cross-tenant exposure.</p>
             <div className="pipeline-tech-tags">
               <span className="tech-tag">Sentence-Transformers</span>
               <span className="tech-tag">FAISS</span>
-              <span className="tech-tag">Per-Client Isolation</span>
+              <span className="tech-tag">Per Client Isolation</span>
               <span className="tech-tag">384-dim Embeddings</span>
             </div>
           </div>
@@ -92,10 +92,10 @@ export default function PipelinePage({ onNavigate }) {
               <div className="pipeline-stage-icon"><Search size={22} /></div>
               <h3>Semantic Retrieval</h3>
             </div>
-            <p>When a query arrives, we embed it and perform approximate nearest-neighbor search on the client's FAISS index. The top-k most semantically relevant chunks are retrieved and ranked by similarity score as context for the LLM.</p>
+            <p>When a query arrives, we embed it and perform approximate nearest-neighbor search on the client's FAISS index. The top k most semantically relevant chunks are retrieved and ranked by similarity score as context for the LLM.</p>
             <div className="pipeline-tech-tags">
               <span className="tech-tag">ANN Search</span>
-              <span className="tech-tag">Top-K Retrieval</span>
+              <span className="tech-tag">Top K Retrieval</span>
               <span className="tech-tag">Score Ranking</span>
               <span className="tech-tag">Cosine Similarity</span>
             </div>
@@ -128,9 +128,9 @@ export default function PipelinePage({ onNavigate }) {
               <div className="pipeline-stage-icon"><Volume2 size={22} /></div>
               <h3>Voice Pipeline (Optional)</h3>
             </div>
-            <p>For voice mode: Faster-Whisper large-v3 transcribes speech in real-time with high accuracy. The RAG response is then synthesized into natural-sounding speech by Kokoro TTS (82M parameter model). Full round-trip completes in under 5 seconds via WebSocket streaming.</p>
+            <p>For voice mode: Faster Whisper large-v3 transcribes speech in real-time with high accuracy. The RAG response is then synthesized into natural sounding speech by Kokoro TTS (82M parameter model). Full round trip completes in under 5 seconds via WebSocket streaming.</p>
             <div className="pipeline-tech-tags">
-              <span className="tech-tag">Faster-Whisper v3</span>
+              <span className="tech-tag">Faster Whisper v3</span>
               <span className="tech-tag">Kokoro TTS</span>
               <span className="tech-tag">WebSocket Streaming</span>
               <span className="tech-tag">10+ Languages</span>
@@ -144,7 +144,7 @@ export default function PipelinePage({ onNavigate }) {
         <div className="section-container" style={{ textAlign: 'center' }}>
           <div className="section-eyebrow">What Sets Us Apart</div>
           <h2 style={{ fontSize: 36, fontWeight: 700, marginBottom: 12, letterSpacing: '-0.03em' }}>
-            Purpose-built for speed, isolation &amp; observability
+            Purpose built for speed, isolation &amp; observability
           </h2>
           <p style={{ color: '#71717A', fontSize: 17, marginBottom: 52, maxWidth: 500, margin: '0 auto 52px' }}>
             Every design decision in this pipeline was made to maximize reliability and minimize latency.
@@ -153,12 +153,12 @@ export default function PipelinePage({ onNavigate }) {
             <div className="pipeline-diff-card">
               <div className="feature-icon"><Zap size={20} /></div>
               <h3>Hardware-Accelerated LLM</h3>
-              <p>While competitors rely on generic GPU clouds, we use Groq's purpose-built LPU hardware for 10× faster inference and consistent sub-500ms generation.</p>
+              <p>While competitors rely on generic GPU clouds, we use Groq's purpose built LPU hardware for 10× faster inference and consistent sub 500ms generation.</p>
             </div>
             <div className="pipeline-diff-card">
               <div className="feature-icon"><Shield size={20} /></div>
-              <h3>True Multi-Tenancy</h3>
-              <p>Per-client FAISS indices with API key isolation. No shared contexts, no data leakage between tenants — enforced at the storage and retrieval layers.</p>
+              <h3>True Multi Tenancy</h3>
+              <p>Per client FAISS indices with API key isolation. No shared contexts, no data leakage between tenants enforced at the storage and retrieval layers.</p>
             </div>
             <div className="pipeline-diff-card">
               <div className="feature-icon"><CheckCircle2 size={20} /></div>
@@ -167,8 +167,8 @@ export default function PipelinePage({ onNavigate }) {
             </div>
             <div className="pipeline-diff-card">
               <div className="feature-icon"><MessageCircle size={20} /></div>
-              <h3>1-Line Widget Integration</h3>
-              <p>One script tag deploys the entire voice + chat experience on any website. No backend required on the customer side — just a single API key.</p>
+              <h3>1 Line Widget Integration</h3>
+              <p>One script tag deploys the entire voice + chat experience on any website. No backend required on the customer side just a single API key.</p>
             </div>
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function PipelinePage({ onNavigate }) {
       <section className="pro-cta">
         <div className="pro-cta-inner">
           <h2>See It In Action</h2>
-          <p>Create your account and deploy your first AI assistant in minutes — no infrastructure setup required.</p>
+          <p>Create your account and deploy your first AI assistant in minutes no infrastructure setup required.</p>
           <div className="pro-cta-actions">
             <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary pro-btn-lg">
               Start Building Free <ArrowRight size={18} />
@@ -232,7 +232,7 @@ export default function PipelinePage({ onNavigate }) {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© 2026 VoiceRAG Inc. All rights reserved.</span>
+            <span>© 2026 VocalizeWeb Inc. All rights reserved.</span>
             <div className="footer-bottom-links">
               <span>Privacy</span>
               <span>Terms</span>

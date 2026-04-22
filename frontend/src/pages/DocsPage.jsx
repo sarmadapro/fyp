@@ -20,7 +20,7 @@ const NAV = [
   },
   {
     section: 'Advanced',
-    items: ['Multi-Language', 'Pipeline Overview', 'Security & Isolation'],
+    items: ['Multi Language', 'Pipeline Overview', 'Security & Isolation'],
   },
 ];
 
@@ -58,7 +58,7 @@ const CONTENT = {
           <div className="docs-step-num">4</div>
           <div className="docs-step-body">
             <h3>Deploy to your website</h3>
-            <p>Go to <strong>API Keys</strong>, generate an embed key, and paste the one-liner script tag into your website's HTML.</p>
+            <p>Go to <strong>API Keys</strong>, generate an embed key, and paste the one liner script tag into your website's HTML.</p>
           </div>
         </div>
       </div>
@@ -110,7 +110,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
 
       <div className="docs-callout docs-callout-warning">
         <AlertCircle size={16} />
-        <span>API keys are shown only once at creation. Store them securely — they cannot be recovered after the initial reveal.</span>
+        <span>API keys are shown only once at creation. Store them securely they cannot be recovered after the initial reveal.</span>
       </div>
 
       <h2>Token Expiry</h2>
@@ -125,7 +125,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
       <p className="docs-lead">A walkthrough of creating, testing, and deploying a complete AI voice assistant from scratch.</p>
 
       <h2>1. Choose your source document</h2>
-      <p>Pick a document that represents a single knowledge domain — e.g., a product manual, an FAQ document, or a company policy PDF. VoiceRAG works best with focused, well-structured content.</p>
+      <p>Pick a document that represents a single knowledge domain e.g., a product manual, an FAQ document, or a company policy PDF. VoiceRAG works best with focused, well structured content.</p>
 
       <div className="docs-callout docs-callout-success">
         <CheckCircle2 size={16} />
@@ -133,7 +133,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
       </div>
 
       <h2>2. Upload and verify indexing</h2>
-      <p>After uploading, the status indicator in the sidebar turns green when indexing is complete. This typically takes 15–45 seconds. The pipeline automatically:</p>
+      <p>After uploading, the status indicator in the sidebar turns green when indexing is complete. This typically takes 15 to 45 seconds. The pipeline automatically:</p>
       <ul className="docs-list">
         <li>Extracts text from your file</li>
         <li>Splits it into overlapping chunks</li>
@@ -144,7 +144,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
       <p>Use the <strong>Chat</strong> tab to send a few queries before enabling voice. This lets you verify that the AI is referencing your document correctly without the overhead of the voice pipeline.</p>
 
       <h2>4. Enable Voice</h2>
-      <p>Switch to the <strong>Voice</strong> tab. Click the orb to start recording. Speak your query naturally — the assistant will respond in under 5 seconds.</p>
+      <p>Switch to the <strong>Voice</strong> tab. Click the orb to start recording. Speak your query naturally the assistant will respond in under 5 seconds.</p>
 
       <h2>5. Deploy your widget</h2>
       <p>Once you're satisfied with accuracy, generate an embed key and add the script tag to your site:</p>
@@ -198,10 +198,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
       <h2>Processing Pipeline</h2>
       <p>Once uploaded, the document goes through:</p>
       <ol className="docs-list">
-        <li><strong>Text extraction</strong> — PyMuPDF (PDF) or python-docx (DOCX) extracts raw text</li>
-        <li><strong>Chunking</strong> — LangChain's recursive splitter divides text into 512-token chunks with 64-token overlap</li>
-        <li><strong>Embedding</strong> — Each chunk is encoded using <code>all-MiniLM-L6-v2</code> (384 dimensions)</li>
-        <li><strong>Indexing</strong> — Vectors are stored in your private FAISS Flat-L2 index</li>
+        <li><strong>Text extraction</strong>: PyMuPDF (PDF) or python-docx (DOCX) extracts raw text</li>
+        <li><strong>Chunking</strong>: LangChain's recursive splitter divides text into 512 token chunks with 64 token overlap</li>
+        <li><strong>Embedding</strong>: Each chunk is encoded using <code>all-MiniLM-L6-v2</code> (384 dimensions)</li>
+        <li><strong>Indexing</strong>: Vectors are stored in your private FAISS Flat-L2 index</li>
       </ol>
 
       <div className="docs-callout docs-callout-info">
@@ -220,9 +220,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...`}</code></pre>
       <h2>How it works</h2>
       <ol className="docs-list">
         <li>Your message is embedded using the same model as your documents</li>
-        <li>Top-5 most relevant chunks are retrieved from your FAISS index</li>
+        <li>Top 5 most relevant chunks are retrieved from your FAISS index</li>
         <li>Retrieved context + your query are sent to Llama 3.3 70B on Groq</li>
-        <li>The response streams back token-by-token in real time</li>
+        <li>The response streams back token by token in real time</li>
       </ol>
 
       <h2>Chat API endpoint</h2>
@@ -252,16 +252,16 @@ data: {"token": " the"}
     <div className="docs-article">
       <div className="docs-badge docs-badge-blue">Core Features</div>
       <h1>Voice Assistant</h1>
-      <p className="docs-lead">The full voice-to-voice pipeline: speech recognition → RAG retrieval → LLM generation → speech synthesis.</p>
+      <p className="docs-lead">The full voice to voice pipeline: speech recognition → RAG retrieval → LLM generation → speech synthesis.</p>
 
       <h2>Pipeline stages & latency</h2>
       <table className="docs-table">
         <thead><tr><th>Stage</th><th>Technology</th><th>Typical Latency</th></tr></thead>
         <tbody>
-          <tr><td>Speech-to-Text</td><td>Faster-Whisper large-v3</td><td>0.3 – 0.8s</td></tr>
+          <tr><td>Speech to Text</td><td>Faster Whisper large-v3</td><td>0.3 – 0.8s</td></tr>
           <tr><td>RAG Retrieval</td><td>FAISS ANN search</td><td>&lt; 50ms</td></tr>
           <tr><td>LLM Generation</td><td>Groq Llama 3.3 70B</td><td>0.2 – 0.5s</td></tr>
-          <tr><td>Text-to-Speech</td><td>Kokoro TTS (82M params)</td><td>0.8 – 1.5s</td></tr>
+          <tr><td>Text to Speech</td><td>Kokoro TTS (82M params)</td><td>0.8 – 1.5s</td></tr>
           <tr><td><strong>Total round-trip</strong></td><td></td><td><strong>2 – 5s</strong></td></tr>
         </tbody>
       </table>
@@ -283,17 +283,17 @@ data: {"token": " the"}
     <div className="docs-article">
       <div className="docs-badge docs-badge-blue">Core Features</div>
       <h1>Analytics</h1>
-      <p className="docs-lead">Monitor every query — latency per stage, error rates, session history, and token usage.</p>
+      <p className="docs-lead">Monitor every query latency per stage, error rates, session history, and token usage.</p>
 
       <h2>Dashboard metrics</h2>
       <div className="docs-metrics-grid">
         <div className="docs-metric-card"><BarChart3 size={18} /><strong>Total Queries</strong><span>Chat + voice combined</span></div>
-        <div className="docs-metric-card"><BarChart3 size={18} /><strong>Avg Latency</strong><span>End-to-end response time</span></div>
+        <div className="docs-metric-card"><BarChart3 size={18} /><strong>Avg Latency</strong><span>End to end response time</span></div>
         <div className="docs-metric-card"><BarChart3 size={18} /><strong>Error Rate</strong><span>Failed or timeout queries</span></div>
         <div className="docs-metric-card"><BarChart3 size={18} /><strong>Tokens Used</strong><span>LLM input + output tokens</span></div>
       </div>
 
-      <h2>Per-stage latency breakdown</h2>
+      <h2>Per stage latency breakdown</h2>
       <p>Every query logs individual timings for STT, retrieval, LLM generation, and TTS. View these in the <strong>Conversation Details</strong> drawer by clicking any session row in the Analytics tab.</p>
 
       <h2>Data retention</h2>
@@ -426,7 +426,7 @@ data: {"token": " the"}
         <li>Navigate to <strong>API Keys</strong> in the portal sidebar</li>
         <li>Enter a descriptive name (e.g. "Production Website")</li>
         <li>Click <strong>Generate Key</strong></li>
-        <li>Copy the key immediately — it is shown only once</li>
+        <li>Copy the key immediately it is shown only once</li>
       </ol>
 
       <div className="docs-callout docs-callout-warning">
@@ -500,9 +500,9 @@ data: {"token": " the"}
         {[
           { num: '01', icon: <FileText size={18} />, title: 'Document Ingestion', desc: 'PyMuPDF / python-docx extract text. LangChain splits into 512-token chunks with 64-token overlap.' },
           { num: '02', icon: <Database size={18} />, title: 'Embedding & Indexing', desc: 'all-MiniLM-L6-v2 encodes each chunk into 384-dimension vectors stored in a per-client FAISS Flat-L2 index.' },
-          { num: '03', icon: <Cpu size={18} />, title: 'Semantic Retrieval', desc: 'Query is embedded and ANN-searched against the FAISS index. Top-5 chunks are retrieved and ranked by cosine similarity.' },
+          { num: '03', icon: <Cpu size={18} />, title: 'Semantic Retrieval', desc: 'Query is embedded and ANN-searched against the FAISS index. Top 5 chunks are retrieved and ranked by cosine similarity.' },
           { num: '04', icon: <MessageCircle size={18} />, title: 'LLM Generation', desc: 'Groq Llama 3.3 70B generates a grounded response from retrieved context in under 500ms on Groq LPU hardware.' },
-          { num: '05', icon: <Volume2 size={18} />, title: 'Voice Synthesis (optional)', desc: 'Faster-Whisper large-v3 handles STT. Kokoro TTS (82M params) synthesises the response. Full round-trip under 5 seconds.' },
+          { num: '05', icon: <Volume2 size={18} />, title: 'Voice Synthesis (optional)', desc: 'Faster Whisper large-v3 handles STT. Kokoro TTS (82M params) synthesises the response. Full round trip under 5 seconds.' },
         ].map((s) => (
           <div key={s.num} className="docs-pipeline-stage">
             <div className="docs-pipeline-num">{s.num}</div>

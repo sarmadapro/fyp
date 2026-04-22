@@ -718,7 +718,7 @@ async def _process_voice_turn(
     first_tts_done = False
 
     try:
-        stream = chat_stream(user_text, conversation_id, doc_service=doc_service)
+        stream = chat_stream(user_text, conversation_id, doc_service=doc_service, mode="voice")
         async for event in iterate_stream_with_timeout(stream, _RAG_TURN_TIMEOUT_SEC):
             event_type = event.get("type")
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, MessageCircle, FileText, Image, Globe, Mic, Sparkles, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { sendMessageStream } from '../api/client';
 
 export default function ChatPage() {
@@ -123,7 +124,9 @@ export default function ChatPage() {
                   {msg.role === 'assistant' ? <img src="https://api.dicebear.com/7.x/bottts/svg?seed=AI" alt="AI" /> : <img src="https://api.dicebear.com/7.x/notionists/svg?seed=User" alt="You" />}
                 </div>
                 <div className="message-content">
-                  {msg.content}
+                  {msg.role === 'assistant'
+                    ? <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    : msg.content}
                 </div>
               </div>
             ))}
@@ -133,7 +136,7 @@ export default function ChatPage() {
               <div className="message assistant">
                 <div className="message-avatar">AI</div>
                 <div className="message-content">
-                  {streamingMessage}
+                  <ReactMarkdown>{streamingMessage}</ReactMarkdown>
                   <span className="streaming-cursor">▊</span>
                 </div>
               </div>

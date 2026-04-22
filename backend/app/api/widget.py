@@ -8,13 +8,16 @@ import base64
 import logging
 from datetime import datetime, timezone
 
+import json as _json
+
 from fastapi import APIRouter, HTTPException, Header, UploadFile, File, Form, WebSocket, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.database import SessionLocal
 from app.models.database import APIKey, Client
 from app.services.document_service import ClientDocumentService
-from app.services.chat_service import chat as rag_chat
+from app.services.chat_service import chat as rag_chat, chat_stream
 from app.services.voice_service import transcribe_audio, synthesize_speech, handle_voice_conversation
 
 logger = logging.getLogger(__name__)
@@ -110,6 +113,38 @@ def widget_chat(
         answer=result["answer"],
         session_id=result["conversation_id"],
         sources=result.get("sources", []),
+    )
+
+
+@router.post("/chat/stream")
+async def widget_chat_stream(
+    req: WidgetChatRequest,
+    x_api_key: str = Header(..., alias="X-API-Key"),
+):
+    """Streaming widget chat (SSE). Tokens arrive as they are generated."""
+    client_id = _validate_api_key(x_api_key)
+    session_id = req.session_id or str(uuid.uuid4())
+    doc_service = ClientDocumentService.get_or_create(client_id)
+
+    async def event_generator():
+        try:
+            async for chunk in chat_stream(
+                question=req.message,
+                conversation_id=session_id,
+                doc_service=doc_service,
+            ):
+                yield f"data: {_json.dumps(chunk)}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

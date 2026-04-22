@@ -64,7 +64,7 @@ export default function AuthPage({ onNavigate, onAuthSuccess }) {
               <div className="auth-feat-icon"><Shield size={16} /></div>
               <div className="auth-feat-text">
                 <h4>Your data stays isolated</h4>
-                <p>Per-client vector stores ensure your content never mixes with other tenants.</p>
+                <p>Per client vector stores ensure your content never mixes with other tenants.</p>
               </div>
             </div>
           </div>
@@ -75,7 +75,7 @@ export default function AuthPage({ onNavigate, onAuthSuccess }) {
             <div className="auth-key-reveal">
               <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Account Created!</h2>
               <p className="auth-key-warning" style={{ marginBottom: 20 }}>
-                Your API key has been generated. Save it now — it won't be shown again after you navigate away.
+                Your API key has been generated. Save it now it won't be shown again after you navigate away.
               </p>
               <div className="auth-key-box">
                 <code>{generatedKey}</code>
@@ -133,15 +133,15 @@ export default function AuthPage({ onNavigate, onAuthSuccess }) {
           <div className="auth-left-feature">
             <div className="auth-feat-icon"><Zap size={16} /></div>
             <div className="auth-feat-text">
-              <h4>Sub-5s voice round-trips</h4>
-              <p>Faster-Whisper STT + Groq LLM + Kokoro TTS delivering natural conversation speeds.</p>
+              <h4>Sub 5s voice round trips</h4>
+              <p>Faster Whisper STT + Groq LLM + Kokoro TTS delivering natural conversation speeds.</p>
             </div>
           </div>
           <div className="auth-left-feature">
             <div className="auth-feat-icon"><Shield size={16} /></div>
             <div className="auth-feat-text">
               <h4>Full data isolation</h4>
-              <p>Per-client indices and API key scoping ensure your content stays yours, always.</p>
+              <p>Per client indices and API key scoping ensure your content stays yours, always.</p>
             </div>
           </div>
         </div>

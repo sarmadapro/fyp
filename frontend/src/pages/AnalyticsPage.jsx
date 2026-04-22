@@ -274,7 +274,7 @@ export default function AnalyticsPage() {
           <div className="latency-summary-grid">
             <div className="latency-stat">
               <span className="latency-stat-value">{formatMs(stats.avg_stt_ms)}</span>
-              <span className="latency-stat-label">Speech-to-Text</span>
+              <span className="latency-stat-label">Speech to Text</span>
             </div>
             <div className="latency-stat">
               <span className="latency-stat-value">{formatMs(stats.avg_retrieval_ms)}</span>
@@ -286,11 +286,11 @@ export default function AnalyticsPage() {
             </div>
             <div className="latency-stat">
               <span className="latency-stat-value">{formatMs(stats.avg_tts_ms)}</span>
-              <span className="latency-stat-label">Text-to-Speech</span>
+              <span className="latency-stat-label">Text to Speech</span>
             </div>
             <div className="latency-stat total">
               <span className="latency-stat-value">{formatMs(stats.avg_latency_ms)}</span>
-              <span className="latency-stat-label">Total Round-Trip</span>
+              <span className="latency-stat-label">Total Round Trip</span>
             </div>
           </div>
         </div>

@@ -33,16 +33,16 @@ export default function LandingPage({ onNavigate }) {
 
       {/* ── Hero ── */}
       <section className="pro-hero">
-        <div className="pro-hero-eyebrow">AI-Powered Voice Intelligence Platform</div>
+        <div className="pro-hero-eyebrow">AI Powered Voice Intelligence Platform</div>
         <div className="pro-hero-badge">
-          <span>New</span> VoiceRAG 2.0 — Ultra-low latency voice pipeline is live
+          <span>New</span> VoiceRAG 2.0 Ultra-low latency voice pipeline is live
         </div>
         <h1 className="pro-hero-title">
           Deploy AI Voice Agents<br />
           Trained on <span className="hero-gradient-text">Your Data.</span>
         </h1>
         <p className="pro-hero-subtitle">
-          Instantly embed an intelligent voice assistant on your website. Our state-of-the-art RAG pipeline ensures every answer is grounded strictly in your documents — zero hallucinations, full accuracy.
+          Instantly embed an intelligent voice assistant on your website. Our state of the art RAG pipeline ensures every answer is grounded strictly in your documents zero hallucinations, full accuracy.
         </p>
         <div className="pro-hero-actions">
           <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary">
@@ -115,7 +115,7 @@ export default function LandingPage({ onNavigate }) {
         <div className="stats-belt-inner">
           <div className="stat-item">
             <div className="stat-number">&lt;&nbsp;5s</div>
-            <div className="stat-label">Full voice round-trip</div>
+            <div className="stat-label">Full voice round trip</div>
           </div>
           <div className="stat-divider" />
           <div className="stat-item">
@@ -137,7 +137,7 @@ export default function LandingPage({ onNavigate }) {
 
       {/* ── Trusted By ── */}
       <section className="logo-cloud">
-        <p>Trusted by forward-thinking teams globally</p>
+        <p>Trusted by forward thinking teams globally</p>
         <div className="logos">
           <div className="logo-placeholder"><Code size={18} /> Acme Corp</div>
           <div className="logo-placeholder"><Globe size={18} /> GlobalScale</div>
@@ -159,19 +159,19 @@ export default function LandingPage({ onNavigate }) {
           <div className="bento-card bento-large">
             <div className="bento-icon"><Database size={22} /></div>
             <h3>Intelligent RAG Retrieval</h3>
-            <p>Chunk, embed, and index your documents with per-client FAISS indices. Every answer strictly references your uploaded content — zero hallucinations guaranteed.</p>
+            <p>Chunk, embed, and index your documents with per-client FAISS indices. Every answer strictly references your uploaded content zero hallucinations guaranteed.</p>
             <div className="bento-tag-row">
               <span className="bento-tech-tag">FAISS Indexing</span>
               <span className="bento-tech-tag">Semantic Search</span>
-              <span className="bento-tech-tag">Per-Client Isolation</span>
+              <span className="bento-tech-tag">Per Client Isolation</span>
             </div>
           </div>
 
           {/* Small — Voice */}
           <div className="bento-card">
             <div className="bento-icon"><Mic size={22} /></div>
-            <h3>Real-Time Voice UI</h3>
-            <p>Full voice-to-voice pipeline using Faster-Whisper STT and Kokoro TTS. Sub-5-second round-trips for truly natural conversations.</p>
+            <h3>Real Time Voice UI</h3>
+            <p>Full voice to voice pipeline using Faster Whisper STT and Kokoro TTS. Sub-5-second round-trips for truly natural conversations.</p>
             <div className="bento-tag-row">
               <span className="bento-tech-tag">Whisper STT</span>
               <span className="bento-tech-tag">Kokoro TTS</span>
@@ -182,9 +182,9 @@ export default function LandingPage({ onNavigate }) {
           <div className="bento-card">
             <div className="bento-icon"><BarChart3 size={22} /></div>
             <h3>Advanced Analytics</h3>
-            <p>Per-stage latency breakdowns, error tracking, session histories, and token usage — all visible in your live dashboard.</p>
+            <p>Per-stage latency breakdowns, error tracking, session histories, and token usage all visible in your live dashboard.</p>
             <div className="bento-tag-row">
-              <span className="bento-tech-tag">Real-time Metrics</span>
+              <span className="bento-tech-tag">Real time Metrics</span>
               <span className="bento-tech-tag">Error Logs</span>
             </div>
           </div>
@@ -192,8 +192,8 @@ export default function LandingPage({ onNavigate }) {
           {/* Large card — Widget */}
           <div className="bento-card bento-large">
             <div className="bento-icon"><Code size={22} /></div>
-            <h3>1-Click Widget Deployment</h3>
-            <p>Generate isolated API credentials instantly. Copy one line of JavaScript and your AI assistant is live on your site — floating exactly where visitors need it.</p>
+            <h3>1 Click Widget Deployment</h3>
+            <p>Generate isolated API credentials instantly. Copy one line of JavaScript and your AI assistant is live on your site floating exactly where visitors need it.</p>
             <div className="bento-code-preview">
               <code>{`<script src="voicerag.io/widget.js" data-key="YOUR_KEY"></script>`}</code>
             </div>
@@ -219,7 +219,7 @@ export default function LandingPage({ onNavigate }) {
               <div className="how-step-num">02</div>
               <div className="how-step-icon"><Cpu size={22} /></div>
               <h3>Configure Your Assistant</h3>
-              <p>Your AI is ready immediately. Test it via text chat or voice in the portal. Accurate answers from your docs — no setup beyond uploading.</p>
+              <p>Your AI is ready immediately. Test it via text chat or voice in the portal. Accurate answers from your docs no setup beyond uploading.</p>
             </div>
             <div className="how-step-connector"><ArrowRight size={20} /></div>
             <div className="how-step">
@@ -241,27 +241,27 @@ export default function LandingPage({ onNavigate }) {
           <div className="ent-grid">
             <div className="ent-card">
               <div className="ent-card-icon"><Zap size={20} /></div>
-              <h3>Hardware-Accelerated LLM</h3>
-              <p>Groq's LPU hardware delivers 10× faster inference than standard GPU clouds — keeping LLM responses under 500ms consistently.</p>
+              <h3>Hardware Accelerated LLM</h3>
+              <p>Groq's LPU hardware delivers 10× faster inference than standard GPU clouds keeping LLM responses under 500ms consistently.</p>
             </div>
             <div className="ent-card">
               <div className="ent-card-icon"><Shield size={20} /></div>
-              <h3>True Multi-Tenancy</h3>
-              <p>Per-client FAISS indices with API key isolation. No shared contexts, no cross-tenant data leakage — enforced at every layer.</p>
+              <h3>True Multi Tenancy</h3>
+              <p>Per client FAISS indices with API key isolation. No shared contexts, no cross-tenant data leakage enforced at every layer.</p>
             </div>
             <div className="ent-card">
               <div className="ent-card-icon"><Activity size={20} /></div>
               <h3>Full Observability</h3>
-              <p>Per-stage latency (STT → Retrieval → LLM → TTS), error logs, and session analytics baked in from day one.</p>
+              <p>Per stage latency (STT → Retrieval → LLM → TTS), error logs, and session analytics baked in from day one.</p>
             </div>
             <div className="ent-card">
               <div className="ent-card-icon"><Puzzle size={20} /></div>
-              <h3>1-Line Integration</h3>
+              <h3>1 Line Integration</h3>
               <p>One script tag. That's all it takes. Our widget handles the entire chat and voice experience for your visitors.</p>
             </div>
             <div className="ent-card">
               <div className="ent-card-icon"><Languages size={20} /></div>
-              <h3>Multi-Language Voice</h3>
+              <h3>Multi Language Voice</h3>
               <p>Auto-detect or manually select from 10+ languages including English, Hindi, Urdu, and more for global reach.</p>
             </div>
             <div className="ent-card">
@@ -277,7 +277,7 @@ export default function LandingPage({ onNavigate }) {
       <section className="pro-cta">
         <div className="pro-cta-inner">
           <h2>Ready to deploy your AI agent?</h2>
-          <p>Join teams delivering accurate, grounded AI experiences — with zero hallucinations and instant deployment.</p>
+          <p>Join teams delivering accurate, grounded AI experiences with zero hallucinations and instant deployment.</p>
           <div className="pro-cta-actions">
             <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary pro-btn-lg">
               Get Started Free <ArrowRight size={18} />
@@ -299,7 +299,7 @@ export default function LandingPage({ onNavigate }) {
                 <span>VoiceRAG</span>
               </div>
               <p className="footer-brand-desc">
-                Intelligent AI voice agents trained on your data. Deploy in minutes, answer accurately — always.
+                Intelligent AI voice agents trained on your data. Deploy in minutes, answer accurately always.
               </p>
             </div>
             <div className="footer-links-col">
@@ -331,7 +331,7 @@ export default function LandingPage({ onNavigate }) {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© 2026 VoiceRAG Inc. All rights reserved.</span>
+            <span>© 2026 VocalizeWeb Inc. All rights reserved.</span>
             <div className="footer-bottom-links">
               <span>Privacy</span>
               <span>Terms</span>

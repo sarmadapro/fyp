@@ -73,7 +73,7 @@ export default function APIKeysPage() {
                   <strong>New Embed Key Generated</strong>
                 </div>
                 <p className="key-reveal-warning">
-                  Save this key now — it will not be shown again after you leave this page.
+                  Save this key now it will not be shown again after you leave this page.
                 </p>
               </div>
             )}
@@ -155,7 +155,7 @@ export default function APIKeysPage() {
               <ol>
                 <li>Copy the embed code above and paste it into your website's HTML (before <code>&lt;/body&gt;</code>).</li>
                 <li>The widget loads automatically and routes all visitor interactions to your isolated AI knowledge base.</li>
-                <li>Use <strong>Regenerate Key</strong> if your key is compromised — the old key is revoked instantly.</li>
+                <li>Use <strong>Regenerate Key</strong> if your key is compromised the old key is revoked instantly.</li>
               </ol>
             </div>
           </>

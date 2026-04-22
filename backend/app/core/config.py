@@ -18,14 +18,14 @@ _possible_env_paths = [
 _env_loaded = False
 for _env_path in _possible_env_paths:
     if _env_path.exists():
-        load_dotenv(_env_path)
+        load_dotenv(_env_path, override=True)
         print(f"[CONFIG] Loaded .env from: {_env_path}")
         _env_loaded = True
         break
 
 if not _env_loaded:
     print("[CONFIG] WARNING: .env file not found in any expected location!")
-    load_dotenv()
+    load_dotenv(override=True)
 
 
 class Settings:

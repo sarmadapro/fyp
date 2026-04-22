@@ -388,6 +388,7 @@ WIDGET_JS = r"""
     el.textContent = text;
     $msgs.appendChild(el);
     $msgs.scrollTop = $msgs.scrollHeight;
+    return el;
   }
   function showTyping() {
     var el = document.createElement('div');
@@ -403,7 +404,7 @@ WIDGET_JS = r"""
     $in.style.height = Math.min($in.scrollHeight, 100) + 'px';
   });
 
-  /* ─── Text send ──────────────────────────────────────────────────────── */
+  /* ─── Text send (streaming SSE) ─────────────────────────────────────── */
   function sendText() {
     var text = $in.value.trim();
     if (!text || busy) return;
@@ -411,22 +412,64 @@ WIDGET_JS = r"""
     setBusy(true);
     addMsg(text, 'u');
     showTyping();
-    fetch(API_URL + '/widget/chat', {
+
+    fetch(API_URL + '/widget/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
       body: JSON.stringify({ message: text, session_id: sid }),
     })
     .then(function(res) {
       hideTyping();
-      if (!res.ok) return res.json().catch(function(){return {};}).then(function(e){ addMsg(e.detail || 'Something went wrong. Please try again.', 'e'); });
-      return res.json().then(function(d) {
-        sid = d.session_id;
-        addMsg(d.answer, 'a');
-        if (!isOpen) $unread.classList.add('show');
-      });
+      if (!res.ok) {
+        return res.json().catch(function(){ return {}; }).then(function(e) {
+          addMsg(e.detail || 'Something went wrong. Please try again.', 'e');
+          setBusy(false); $in.focus();
+        });
+      }
+
+      // Create a streaming bubble
+      var msgEl = addMsg('', 'a');
+      var fullText = '';
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+
+      function read() {
+        reader.read().then(function(result) {
+          if (result.done) {
+            setBusy(false); $in.focus();
+            if (!isOpen) $unread.classList.add('show');
+            return;
+          }
+          buffer += decoder.decode(result.value, { stream: true });
+          var lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          lines.forEach(function(line) {
+            var trimmed = line.trim();
+            if (!trimmed.startsWith('data: ')) return;
+            var json = trimmed.slice(6);
+            if (json === '[DONE]') return;
+            try {
+              var chunk = JSON.parse(json);
+              if (chunk.type === 'token') {
+                fullText += chunk.content;
+                if (msgEl) { msgEl.textContent = fullText; $msgs.scrollTop = $msgs.scrollHeight; }
+              } else if (chunk.type === 'done') {
+                if (chunk.conversation_id) sid = chunk.conversation_id;
+              } else if (chunk.type === 'error') {
+                if (msgEl) msgEl.textContent = chunk.message || 'Something went wrong.';
+              }
+            } catch(e) {}
+          });
+          read();
+        }).catch(function() {
+          addMsg('Unable to reach the server. Please try again.', 'e');
+          setBusy(false); $in.focus();
+        });
+      }
+      read();
     })
-    .catch(function() { hideTyping(); addMsg('Unable to reach the server. Please try again.', 'e'); })
-    .finally(function() { setBusy(false); $in.focus(); });
+    .catch(function() { hideTyping(); addMsg('Unable to reach the server. Please try again.', 'e'); setBusy(false); $in.focus(); });
   }
   $go.addEventListener('click', sendText);
   $in.addEventListener('keydown', function(e) {

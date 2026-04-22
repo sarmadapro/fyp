@@ -1,0 +1,132 @@
+[
+  {
+    "id": "F1",
+    "question": "Where is Namal University located?",
+    "answer": "Namal University is located 30 km along Talagang Road in Mianwali, Punjab 42250, Pakistan."
+  },
+  {
+    "id": "F2",
+    "question": "Who is the founder of Namal University?",
+    "answer": "The founder of Namal University is Imran Khan, who conceived the vision in 2005 to build an academic institution on the banks of Namal Lake, Mianwali."
+  },
+  {
+    "id": "F3",
+    "question": "Who is the current Rector of Namal University?",
+    "answer": "The current Rector of Namal University is Dr. M. Najam ul Islam."
+  },
+  {
+    "id": "F4",
+    "question": "What year was Namal College established?",
+    "answer": "Namal College was established in 2008."
+  },
+  {
+    "id": "F5",
+    "question": "What is the minimum eligibility percentage required for admission at Namal University?",
+    "answer": "The minimum eligibility percentage required for admission is at least 70% marks in Intermediate or equivalent examinations."
+  },
+  {
+    "id": "F6",
+    "question": "What is the contact email address of Namal University?",
+    "answer": "The main contact email address for Namal University is **info@namal.edu.pk**."
+  },
+  {
+    "id": "M1",
+    "question": "What undergraduate programs does Namal University offer?",
+    "answer": "Namal University offers the following undergraduate programs:  \n- BS Electrical Engineering  \n- BS Computer Science  \n- BBA  \n- BS Mathematics"
+  },
+  {
+    "id": "M2",
+    "question": "How is the merit/aggregate calculated for admissions at Namal University?",
+    "answer": "The aggregate merit is calculated as: **43% Intermediate/equivalent marks + 43% Entry Test score**."
+  },
+  {
+    "id": "M3",
+    "question": "What is the Elite 90 Scholarship at Namal University?",
+    "answer": "The Elite 90 Scholarship is a 100% tuition fee waiver for candidates with 90% or more in Intermediate or an equivalent qualification."
+  },
+  {
+    "id": "M4",
+    "question": "What is CAID and who is its director?",
+    "answer": "**CAID (Centre for AI & Big Data)** is a leading research hub at Namal University that drives cutting-edge research, fosters creative solutions, and cultivates expert talent in artificial intelligence and big data.\n\n**Director:** Dr. Tassadaq Hussain (Professor & Director CAID)."
+  },
+  {
+    "id": "M5",
+    "question": "What is the application fee for admission to Namal University?",
+    "answer": "The application fee is Rs. 1,000/- (non-refundable)."
+  },
+  {
+    "id": "H1",
+    "question": "How many credit hours does the BS Computer Science program require, and what are its main research areas?",
+    "answer": "The BS Computer Science program requires **133 credit hours**. Its main research areas include **Machine Learning, NLP, AI, Deep Learning, Computer Vision, and Software Engineering**."
+  },
+  {
+    "id": "H2",
+    "question": "What is the computing performance of CAID's supercomputer and how many GPU units does it have?",
+    "answer": "**Computing Performance:** 1.6 PetaFLOPS peak performance.\n\n**GPU Units:** 40 × 4070Ti GPUs."
+  },
+  {
+    "id": "H3",
+    "question": "Which Namal alumni was recognized by the World Economic Forum as a Future Leader?",
+    "answer": "Zulqarnain Haider was selected among the World Economic Forum Future 50 Leaders."
+  },
+  {
+    "id": "H4",
+    "question": "Who chairs the Board of Governors at Namal University and name at least three other board members.",
+    "answer": "**Chair of the Board of Governors:** Mr. Imran Khan.\n\n**Three other board members:**\n- Mr. Abdul Razak Dawood (Founder, Descon)\n- Mr. Sikandar Mustafa Khan (Chairman, Millat Tractors)\n- Mrs. Aleema Khanum"
+  },
+  {
+    "id": "H5",
+    "question": "What is the 2026 admissions deadline and which bank should the application fee be paid to?",
+    "answer": "**2026 admissions deadline:** Friday, July 31, 2026.\n\n**Bank for application fee:** Muslim Commercial Bank (MCB)."
+  },
+  {
+    "id": "A1",
+    "question": "Does Namal University offer a BS Pharmacy program?",
+    "answer": "I don't have that information."
+  },
+  {
+    "id": "A2",
+    "question": "What is the exact annual tuition fee in Pakistani rupees at Namal University?",
+    "answer": "I don't have that information."
+  },
+  {
+    "id": "A3",
+    "question": "Who is the Vice Chancellor of Namal University?",
+    "answer": "I don't have that information."
+  },
+  {
+    "id": "A4",
+    "question": "Does Namal University have a medical school or MBBS program?",
+    "answer": "I don't have that information."
+  },
+  {
+    "id": "A5",
+    "question": "What is the name of CAID's supercomputer?",
+    "answer": "The context does not specify a name for CAID's supercomputer."
+  },
+  {
+    "id": "X1",
+    "question": "What scholarships does Namal University offer to students from Baluchistan or former FATA?",
+    "answer": "Namal University offers the **EX-FATA / Baluchistan** scholarship, which provides a **100% admission fee + security waiver** for candidates from formerly FATA or Baluchistan."
+  },
+  {
+    "id": "X2",
+    "question": "Which Namal alumni secured a fully funded Master's scholarship abroad and where?",
+    "answer": "Usama Bin Sohaib secured a 100% scholarship for a Master's at Tampere University, Finland."
+  },
+  {
+    "id": "X3",
+    "question": "What research projects is CAID currently working on and with which external partners?",
+    "answer": "Based on the context, CAID is currently working on the following research projects with these external partners:\n\n| Project | Description | Partners |\n|---|---|---|\n| Indigenous Supercomputing | Developing Pakistan's fastest supercomputing system for AI applications | **BARC** (Balochistan Agriculture Research Center); Pakistan Supercomputing Center |\n| VR Tele-Rehabilitation | Virtual Reality Platform enabling remote rehabilitation services | **New Zealand Chiropractic Center**; Riphah |\n| Smart Rice Sorting | AI-powered solution for intelligent rice processing | **Alkaram Rice Engineering** |\n| Real-time Cattle ID System | Image-based livestock breed identification for farmers | **Ministry of Livestock** |\n| RISC-V Seed Sorting | FPGA-accelerated high-speed multi-camera grain inspection | **Industrial partners** |"
+  },
+  {
+    "id": "X4",
+    "question": "What is Namal's Green Namal initiative and what environmental features surround the campus?",
+    "answer": "**Green Namal Initiative** is the university's commitment to environmental sustainability, motivating all members to become ecologically conscious. The university uses renewable energy resources, recycles waste, and actively maintains its scenic natural surroundings.\n\n**Environmental features surrounding the campus include:**\n- **Namal Lake** (5 sq km)\n- The historic **Namal Dam** (built 1913 by the British)\n- The surrounding **valley** — a sanctuary for migratory birds including Russian ducks and Siberian cranes.\n\nThe campus itself sits at the foothill of a mountaintop overlooking Namal Lake, surrounded by the Koh-i-Suleiman and Salt Range."
+  },
+  {
+    "id": "X5",
+    "question": "What was the original university affiliation of Namal College before it became degree-awarding?",
+    "answer": "Namal College was originally an affiliate college of the University of Bradford, UK."
+  }
+]

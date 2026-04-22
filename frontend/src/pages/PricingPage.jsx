@@ -56,9 +56,9 @@ const TIERS = [
       { text: 'Unlimited documents', included: true },
       { text: 'Text chat + Voice assistant', included: true },
       { text: 'Custom analytics & reporting', included: true },
-      { text: 'White-label widget', included: true },
+      { text: 'White label widget', included: true },
       { text: 'Dedicated support engineer', included: true },
-      { text: 'Multi-language voice (10+ langs)', included: true },
+      { text: 'Multi language voice (10+ langs)', included: true },
       { text: 'Custom branding & domain', included: true },
       { text: 'Priority support + SLA', included: true },
       { text: 'Custom LLM / on-prem deployment', included: true },
@@ -73,7 +73,7 @@ const FAQS = [
   },
   {
     q: 'What counts as a "query"?',
-    a: 'Each message sent to the AI assistant — via text or voice — counts as one query. Follow-up messages in the same conversation each count separately.',
+    a: 'Each message sent to the AI assistant via text or voice counts as one query. Follow-up messages in the same conversation each count separately.',
   },
   {
     q: 'What file types can I upload?',
@@ -122,14 +122,14 @@ export default function PricingPage({ onNavigate }) {
       <section className="pro-hero" style={{ paddingBottom: '60px' }}>
         <div className="pro-hero-eyebrow">Transparent Pricing</div>
         <div className="pro-hero-badge">
-          <span>Free</span> 14-day Pro trial — no credit card required
+          <span>Free</span> 14-day Pro trial no credit card required
         </div>
         <h1 className="pro-hero-title">
           Simple pricing.<br />
           <span className="hero-gradient-text">No surprises.</span>
         </h1>
         <p className="pro-hero-subtitle">
-          Start free and scale when you're ready. Every plan includes your own isolated knowledge base and the same production-grade RAG pipeline.
+          Start free and scale when you're ready. Every plan includes your own isolated knowledge base and the same production grade RAG pipeline.
         </p>
       </section>
 
@@ -184,15 +184,15 @@ export default function PricingPage({ onNavigate }) {
             <div className="perk-item">
               <div className="perk-icon"><Shield size={20} /></div>
               <div className="perk-text">
-                <strong>Per-client data isolation</strong>
-                <span>Separate FAISS index per account — zero cross-tenant exposure.</span>
+                <strong>Per client data isolation</strong>
+                <span>Separate FAISS index per account zero cross tenant exposure.</span>
               </div>
             </div>
             <div className="perk-item">
               <div className="perk-icon"><Zap size={20} /></div>
               <div className="perk-text">
                 <strong>Groq LPU inference</strong>
-                <span>Sub-500ms LLM generation on Groq's purpose-built hardware.</span>
+                <span>Sub-500ms LLM generation on Groq's purpose built hardware.</span>
               </div>
             </div>
             <div className="perk-item">
@@ -206,7 +206,7 @@ export default function PricingPage({ onNavigate }) {
               <div className="perk-icon"><Building2 size={20} /></div>
               <div className="perk-text">
                 <strong>99.9% uptime SLA</strong>
-                <span>Production-grade infrastructure with continuous monitoring.</span>
+                <span>Production grade infrastructure with continuous monitoring.</span>
               </div>
             </div>
           </div>
@@ -255,7 +255,7 @@ export default function PricingPage({ onNavigate }) {
                 <span>VoiceRAG</span>
               </div>
               <p className="footer-brand-desc">
-                Intelligent AI voice agents trained on your data. Deploy in minutes, answer accurately — always.
+                Intelligent AI voice agents trained on your data. Deploy in minutes, answer accurately always.
               </p>
             </div>
             <div className="footer-links-col">
