@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   Mic, Zap, Shield, BarChart3, ArrowRight, Code, Globe,
   Database, FileText, Cpu, Lock, Activity, Puzzle,
@@ -5,27 +6,38 @@ import {
 } from 'lucide-react';
 
 export default function LandingPage({ onNavigate }) {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <div className="pro-landing">
       <div className="glow-bg" />
 
       {/* ── Navigation ── */}
-      <nav className="pro-landing-nav">
+      <nav className={`pro-landing-nav${scrolled ? ' nav-scrolled' : ''}`}>
         <div className="pro-nav-container">
-          <div className="landing-brand" style={{ cursor: 'pointer' }} onClick={() => window.scrollTo(0, 0)}>
-            <div className="landing-brand-icon"><Mic size={18} /></div>
-            <span>VoiceRAG</span>
+          <div className="landing-brand" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <div className="landing-brand-icon"><Mic size={16} /></div>
+            <span className="landing-brand-name">VoiceRAG</span>
           </div>
           <div className="pro-nav-menu">
             <span className="pro-nav-item">Features</span>
-            <span className="pro-nav-item" onClick={() => onNavigate('pipeline')}>Pipeline</span>
+            <span className="pro-nav-item" onClick={() => onNavigate('pipeline')}>
+              Pipeline <span className="nav-item-badge">New</span>
+            </span>
             <span className="pro-nav-item" onClick={() => onNavigate('pricing')}>Pricing</span>
             <span className="pro-nav-item" onClick={() => onNavigate('docs')}>Docs</span>
           </div>
           <div className="pro-nav-actions">
             <button onClick={() => onNavigate('auth')} className="pro-nav-signin">Sign In</button>
+            <div className="nav-actions-divider" />
             <button onClick={() => onNavigate('auth')} className="pro-btn pro-btn-primary pro-btn-sm">
-              Get Started Free
+              Get Started <ArrowRight size={13} />
             </button>
           </div>
         </div>

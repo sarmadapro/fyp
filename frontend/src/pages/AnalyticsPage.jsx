@@ -48,6 +48,7 @@ function ConversationRow({ entry }) {
     lat.retrieval_ms || 0,
     lat.llm_generation_ms || 0,
     lat.tts_first_audio_ms || 0,
+    lat.time_to_first_word_ms || 0,
     1
   );
 
@@ -119,7 +120,9 @@ function ConversationRow({ entry }) {
               <div className="latency-breakdown">
                 {entry.mode === 'voice' && (
                   <LatencyBar
-                    label="STT"
+                    label={lat.stt_audio_duration_s != null
+                      ? `STT (${lat.stt_audio_duration_s}s audio)`
+                      : 'STT'}
                     value={lat.stt_transcription_ms}
                     maxValue={maxLat}
                     color="var(--accent-warning)"
@@ -143,6 +146,14 @@ function ConversationRow({ entry }) {
                     value={lat.tts_first_audio_ms}
                     maxValue={maxLat}
                     color="var(--accent-success)"
+                  />
+                )}
+                {entry.mode === 'voice' && lat.time_to_first_word_ms != null && (
+                  <LatencyBar
+                    label="→ First Word"
+                    value={lat.time_to_first_word_ms}
+                    maxValue={maxLat}
+                    color="#a78bfa"
                   />
                 )}
                 <div className="latency-total">
@@ -288,6 +299,14 @@ export default function AnalyticsPage() {
               <span className="latency-stat-value">{formatMs(stats.avg_tts_ms)}</span>
               <span className="latency-stat-label">Text to Speech</span>
             </div>
+            {stats.avg_time_to_first_word_ms > 0 && (
+              <div className="latency-stat">
+                <span className="latency-stat-value" style={{ color: '#a78bfa' }}>
+                  {formatMs(stats.avg_time_to_first_word_ms)}
+                </span>
+                <span className="latency-stat-label">Avg First Word</span>
+              </div>
+            )}
             <div className="latency-stat total">
               <span className="latency-stat-value">{formatMs(stats.avg_latency_ms)}</span>
               <span className="latency-stat-label">Total Round Trip</span>

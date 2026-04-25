@@ -22,10 +22,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineLatency:
     """Latency breakdown for each stage in the pipeline."""
-    stt_transcription_ms: Optional[float] = None       # Speech → text time
+    stt_transcription_ms: Optional[float] = None       # Speech → text processing time
+    stt_audio_duration_s: Optional[float] = None       # Actual length of the audio clip
     retrieval_ms: Optional[float] = None                # FAISS vector search time
     llm_generation_ms: Optional[float] = None           # LLM first-token / full generation
     tts_first_audio_ms: Optional[float] = None          # Text → first audio chunk
+    time_to_first_word_ms: Optional[float] = None       # User stops speaking → first audio heard
     total_round_trip_ms: Optional[float] = None         # End-to-end time
 
 
@@ -86,6 +88,13 @@ def mark(trace_id: str, stage: str, event: str = "start"):
     trace[key] = time.perf_counter()
 
 
+def set_audio_duration(trace_id: str, duration_s: float):
+    """Store the actual audio clip length (reported by Whisper) on the trace."""
+    trace = _active_traces.get(trace_id)
+    if trace:
+        trace["stt_audio_duration_s"] = duration_s
+
+
 def record_error(trace_id: str, error_message: str):
     """Attach an error to the current trace."""
     trace = _active_traces.get(trace_id)
@@ -116,9 +125,11 @@ def finish_trace(trace_id: str, ai_response: str = "") -> Optional[ConversationE
 
     latency = PipelineLatency(
         stt_transcription_ms=_ms("stt_start", "stt_end"),
+        stt_audio_duration_s=trace.get("stt_audio_duration_s"),
         retrieval_ms=_ms("retrieval_start", "retrieval_end"),
         llm_generation_ms=_ms("llm_start", "llm_end"),
         tts_first_audio_ms=_ms("tts_start", "tts_end"),
+        time_to_first_word_ms=_ms("start_time", "first_word_end"),
         total_round_trip_ms=round((now - trace["start_time"]) * 1000, 2),
     )
 
@@ -200,6 +211,7 @@ def get_summary() -> dict:
     llm_latencies = [e.latency.llm_generation_ms for e in _entries if e.latency.llm_generation_ms is not None]
     tts_latencies = [e.latency.tts_first_audio_ms for e in _entries if e.latency.tts_first_audio_ms is not None]
     retrieval_latencies = [e.latency.retrieval_ms for e in _entries if e.latency.retrieval_ms is not None]
+    ttfw_latencies = [e.latency.time_to_first_word_ms for e in _entries if e.latency.time_to_first_word_ms is not None]
 
     return {
         "total_conversations": total,
@@ -211,6 +223,7 @@ def get_summary() -> dict:
         "avg_llm_ms": _avg(llm_latencies),
         "avg_tts_ms": _avg(tts_latencies),
         "avg_retrieval_ms": _avg(retrieval_latencies),
+        "avg_time_to_first_word_ms": _avg(ttfw_latencies),
     }
 
 

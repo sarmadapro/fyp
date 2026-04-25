@@ -51,13 +51,29 @@ export function useVoiceConversation() {
   // that the backend had already put on the wire before it saw our interrupt.
   // Reopened on the next turn's `transcription` event (or `answer`).
   const acceptingAudioRef = useRef(true);
-  // ── Echo-aware barge-in gating ──
-  // Long-lived mic stream + AnalyserNode used ONLY for polling mic energy
-  // while VAD is paused during TTS. A separate polling interval replaces the
-  // VAD for barge-in detection so speaker echo can never reach onSpeechStart.
-  const monitorStreamRef = useRef(null);
-  const monitorContextRef = useRef(null);
-  const micAnalyserRef = useRef(null);
+  // ── Unified persistent mic graph ──
+  // ONE MediaStream + AudioContext + ScriptProcessor opened at connect(),
+  // torn down at disconnect(). Used for:
+  //   (a) the barge-in energy detector (mic AnalyserNode),
+  //   (b) a rolling ring buffer of the last ~1.5s of PCM (for recovering the
+  //       leading edge of a barge-in utterance — see startCapture prefixSec),
+  //   (c) the live capture that streams to the backend when captureActiveRef
+  //       is true.
+  // Collapses the previous three-stream architecture (VAD + echo monitor +
+  // per-utterance capture) down to two (VAD is still MicVAD-managed).
+  const userMicStreamRef = useRef(null);
+  const userMicContextRef = useRef(null);
+  const userMicSourceRef = useRef(null);
+  const userMicAnalyserRef = useRef(null);
+  const userMicProcessorRef = useRef(null);
+  // Ring buffer of recent PCM (always populated while mic graph is live).
+  // Float32Array chunks, total length capped at RING_BUFFER_MAX_SAMPLES.
+  const ringBufferRef = useRef([]);
+  const ringBufferLengthRef = useRef(0);
+  // When true, the ScriptProcessor ALSO appends each PCM chunk to the active
+  // capture buffer. Flipping this ref (vs. opening a new stream) makes
+  // start/stop of capture synchronous and zero-latency.
+  const captureActiveRef = useRef(false);
   // AnalyserNode in the TTS playback graph. Every playing BufferSource routes
   // through playbackGainRef so this analyser sees all assistant audio.
   const playbackGainRef = useRef(null);
@@ -66,10 +82,11 @@ export function useVoiceConversation() {
   const bargeInDetectorRef = useRef(null);
   // Consecutive samples above threshold — avoids single-spike false triggers.
   const bargeInConsecutiveRef = useRef(0);
-  // Software gate: true from 'transcription' until resumeVAD() is called.
+  // Software gate: true from first audio_chunk until resumeVAD() is called.
   // Guards onSpeechStart independently of vad.pause() timing — if the VAD
   // worker has queued frames that fire after pause() is called, this ref
-  // catches them before any processing begins.
+  // catches them before any processing begins. Intentionally NOT set on
+  // `transcription` so the user can barge in during RAG processing.
   const ttsActiveRef = useRef(false);
   // AudioContext for reliable playback
   const audioContextRef = useRef(null);
@@ -78,11 +95,7 @@ export function useVoiceConversation() {
   const currentAnswerRef = useRef('');
   // Track whether we're connected to avoid race conditions
   const isConnectedRef = useRef(false);
-  // Per-utterance PCM capture refs (for low-latency WAV chunking)
-  const captureStreamRef = useRef(null);
-  const captureContextRef = useRef(null);
-  const captureSourceRef = useRef(null);
-  const captureProcessorRef = useRef(null);
+  // Live capture state — buffers fed from the ScriptProcessor when active.
   const captureIntervalRef = useRef(null);
   const captureBuffersRef = useRef([]);
 
@@ -119,9 +132,22 @@ export function useVoiceConversation() {
     return gain;
   }, [getAudioContext]);
 
-  // ── Mic monitoring stream (separate from VAD + capture pipelines) ──
-  const startEchoMonitor = useCallback(async () => {
-    if (monitorStreamRef.current) return;
+  // ── Unified mic graph: analyser + ring buffer + active-capture branch ──
+  //
+  // One MediaStream + AudioContext + ScriptProcessor, opened here and held
+  // open for the whole session. Feeds:
+  //   • userMicAnalyserRef — sampled by the barge-in energy detector,
+  //   • ringBufferRef      — rolling window of the last RING_BUFFER_SECONDS
+  //                          of PCM (used as a pre-speech prefix on barge-in
+  //                          and on regular onSpeechStart so we never lose
+  //                          the leading edge of an utterance),
+  //   • captureBuffersRef  — when captureActiveRef is true, each incoming PCM
+  //                          chunk is appended for WebSocket streaming.
+  const RING_BUFFER_SECONDS = 1.5;
+  const RING_BUFFER_MAX_SAMPLES = 16000 * RING_BUFFER_SECONDS;
+
+  const ensureUserMic = useCallback(async () => {
+    if (userMicStreamRef.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -132,45 +158,104 @@ export function useVoiceConversation() {
           sampleRate: 16000,
         },
       });
-      monitorStreamRef.current = stream;
+      userMicStreamRef.current = stream;
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
-      monitorContextRef.current = ctx;
+      // 16 kHz context matches Whisper's expected sample rate.
+      const ctx = new AudioCtx({ sampleRate: 16000 });
+      userMicContextRef.current = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
+      userMicSourceRef.current = source;
+
+      // Analyser branch — for barge-in energy polling.
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
       analyser.smoothingTimeConstant = 0.25;
       source.connect(analyser);
-      micAnalyserRef.current = analyser;
-      // Make sure the playback analyser exists too so confirmBargeInByEnergy
+      userMicAnalyserRef.current = analyser;
+
+      // ScriptProcessor branch — always running. On each callback it
+      //   1) updates the rolling ring buffer, and
+      //   2) appends to the active capture buffer iff captureActiveRef is set.
+      // Using one persistent processor (instead of opening a new mic stream
+      // per utterance) removes the 50–100ms getUserMedia startup latency at
+      // the beginning of every speech segment and keeps the browser's echo
+      // canceller continuously calibrated against the TTS output.
+      const processor = ctx.createScriptProcessor(2048, 1, 1);
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        const chunk = new Float32Array(input);
+
+        // Ring buffer maintenance — always on.
+        ringBufferRef.current.push(chunk);
+        ringBufferLengthRef.current += chunk.length;
+        while (
+          ringBufferLengthRef.current > RING_BUFFER_MAX_SAMPLES &&
+          ringBufferRef.current.length > 1
+        ) {
+          const dropped = ringBufferRef.current.shift();
+          ringBufferLengthRef.current -= dropped.length;
+        }
+
+        // Active capture — only when a speech segment is in progress.
+        if (captureActiveRef.current) {
+          captureBuffersRef.current.push(chunk);
+        }
+      };
+      source.connect(processor);
+      processor.connect(ctx.destination);
+      userMicProcessorRef.current = processor;
+
+      // Make sure the playback analyser exists too so the barge-in detector
       // has both sides to compare.
       ensurePlaybackAnalyser();
-      console.log('[EchoMonitor] Initialized (mic + playback analysers live)');
+      console.log('[UserMic] Persistent mic graph live (analyser + ring buffer + capture tap)');
     } catch (err) {
-      console.warn('[EchoMonitor] Failed to initialize:', err);
+      console.warn('[UserMic] Failed to initialize:', err);
+      throw err;
     }
-  }, [ensurePlaybackAnalyser]);
+  }, [ensurePlaybackAnalyser, RING_BUFFER_MAX_SAMPLES]);
 
-  const stopEchoMonitor = useCallback(() => {
-    if (monitorStreamRef.current) {
+  const teardownUserMic = useCallback(() => {
+    if (userMicProcessorRef.current) {
       try {
-        monitorStreamRef.current.getTracks().forEach((t) => t.stop());
+        userMicProcessorRef.current.onaudioprocess = null;
+        userMicProcessorRef.current.disconnect();
       } catch {
         // ignore
       }
-      monitorStreamRef.current = null;
+      userMicProcessorRef.current = null;
     }
-    if (monitorContextRef.current) {
+    if (userMicSourceRef.current) {
       try {
-        monitorContextRef.current.close();
+        userMicSourceRef.current.disconnect();
       } catch {
         // ignore
       }
-      monitorContextRef.current = null;
+      userMicSourceRef.current = null;
     }
-    micAnalyserRef.current = null;
+    userMicAnalyserRef.current = null;
+    if (userMicContextRef.current) {
+      try {
+        userMicContextRef.current.close();
+      } catch {
+        // ignore
+      }
+      userMicContextRef.current = null;
+    }
+    if (userMicStreamRef.current) {
+      try {
+        userMicStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+      userMicStreamRef.current = null;
+    }
+    ringBufferRef.current = [];
+    ringBufferLengthRef.current = 0;
+    captureActiveRef.current = false;
+    captureBuffersRef.current = [];
     playbackGainRef.current = null;
     playbackAnalyserRef.current = null;
   }, []);
@@ -316,7 +401,7 @@ export function useVoiceConversation() {
     }
 
     try {
-      const sampleRate = captureContextRef.current?.sampleRate || 16000;
+      const sampleRate = userMicContextRef.current?.sampleRate || 16000;
       const wavBlob = float32ToWavBlob(merged, sampleRate);
       const base64 = await blobToBase64(wavBlob);
       wsRef.current.send(JSON.stringify({
@@ -328,46 +413,67 @@ export function useVoiceConversation() {
     }
   }, [blobToBase64, float32ToWavBlob]);
 
-  const startSpeechChunkStreaming = useCallback(async () => {
-    if (captureProcessorRef.current) {
-      return;
+  // ── Start capturing live PCM for WS streaming ──
+  //
+  // Synchronous: just flips a flag and (optionally) prepends the tail of the
+  // persistent ring buffer to the outgoing capture. This is how we recover
+  // audio from BEFORE capture was formally "started" — critical for:
+  //   • normal onSpeechStart, where VAD crosses its threshold ~300ms after
+  //     the user actually started speaking (matches VAD's preSpeechPadMs);
+  //   • barge-in, where the energy detector needs 240ms of sustained speech
+  //     before it fires — without a prefix, those first 240ms would be lost.
+  //
+  // No-op if capture is already active (idempotent for repeated calls from
+  // the barge-in path and the subsequent onSpeechStart once VAD resumes).
+  const startCapture = useCallback(({ prefixSec = 0 } = {}) => {
+    if (captureActiveRef.current) return;
+
+    captureBuffersRef.current = [];
+
+    if (prefixSec > 0 && ringBufferRef.current.length > 0) {
+      const sampleRate = userMicContextRef.current?.sampleRate || 16000;
+      const neededSamples = Math.floor(sampleRate * prefixSec);
+      const prefixChunks = [];
+      let collected = 0;
+      for (let i = ringBufferRef.current.length - 1; i >= 0; i--) {
+        const chunk = ringBufferRef.current[i];
+        if (collected + chunk.length <= neededSamples) {
+          prefixChunks.unshift(chunk);
+          collected += chunk.length;
+        } else {
+          const tailLen = neededSamples - collected;
+          if (tailLen > 0) {
+            prefixChunks.unshift(chunk.subarray(chunk.length - tailLen));
+            collected += tailLen;
+          }
+          break;
+        }
+      }
+      if (prefixChunks.length) {
+        captureBuffersRef.current = prefixChunks;
+        console.log(
+          `[Capture] Prepended ${collected} samples (${(collected / sampleRate).toFixed(2)}s) from ring buffer`
+        );
+      }
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-        sampleRate: 16000,
-      },
-    });
-    captureStreamRef.current = stream;
+    captureActiveRef.current = true;
 
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx({ sampleRate: 16000 });
-    captureContextRef.current = ctx;
-
-    const source = ctx.createMediaStreamSource(stream);
-    captureSourceRef.current = source;
-
-    const processor = ctx.createScriptProcessor(2048, 1, 1);
-    captureProcessorRef.current = processor;
-
-    processor.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0);
-      captureBuffersRef.current.push(new Float32Array(input));
-    };
-
-    source.connect(processor);
-    processor.connect(ctx.destination);
-
-    captureIntervalRef.current = window.setInterval(() => {
-      flushPcmBuffers(false);
-    }, 300);
+    if (!captureIntervalRef.current) {
+      captureIntervalRef.current = window.setInterval(() => {
+        flushPcmBuffers(false);
+      }, 300);
+    }
   }, [flushPcmBuffers]);
 
-  const stopSpeechChunkStreaming = useCallback(async (commit = true) => {
+  // ── Stop capturing + commit or discard the buffered utterance ──
+  const stopCapture = useCallback(async (commit = true) => {
+    if (!captureActiveRef.current && captureBuffersRef.current.length === 0) {
+      // Nothing to do.
+      return;
+    }
+    captureActiveRef.current = false;
+
     if (captureIntervalRef.current) {
       window.clearInterval(captureIntervalRef.current);
       captureIntervalRef.current = null;
@@ -379,44 +485,12 @@ export function useVoiceConversation() {
       captureBuffersRef.current = [];
     }
 
-    if (captureProcessorRef.current) {
-      try {
-        captureProcessorRef.current.disconnect();
-      } catch (err) {
-        console.debug('[Stream] captureProcessor disconnect issue:', err);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (commit) {
+        wsRef.current.send(JSON.stringify({ type: 'audio_commit' }));
+      } else {
+        wsRef.current.send(JSON.stringify({ type: 'audio_discard' }));
       }
-      captureProcessorRef.current.onaudioprocess = null;
-      captureProcessorRef.current = null;
-    }
-
-    if (captureSourceRef.current) {
-      try {
-        captureSourceRef.current.disconnect();
-      } catch (err) {
-        console.debug('[Stream] captureSource disconnect issue:', err);
-      }
-      captureSourceRef.current = null;
-    }
-
-    if (captureContextRef.current) {
-      try {
-        await captureContextRef.current.close();
-      } catch (err) {
-        console.debug('[Stream] captureContext close issue:', err);
-      }
-      captureContextRef.current = null;
-    }
-
-    if (captureStreamRef.current) {
-      captureStreamRef.current.getTracks().forEach((track) => track.stop());
-      captureStreamRef.current = null;
-    }
-    captureBuffersRef.current = [];
-
-    if (commit && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'audio_commit' }));
-    } else if (!commit && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'audio_discard' }));
     }
   }, [flushPcmBuffers]);
 
@@ -483,7 +557,7 @@ export function useVoiceConversation() {
         stopBargeInDetector();
         return;
       }
-      const mic = rmsFromAnalyser(micAnalyserRef.current);
+      const mic = rmsFromAnalyser(userMicAnalyserRef.current);
       const tts = rmsFromAnalyser(playbackAnalyserRef.current);
 
       // Skip until TTS is actually audible (avoid calibrating on silence
@@ -514,27 +588,39 @@ export function useVoiceConversation() {
           `ratio=${tts > 0 ? (mic/tts).toFixed(2) : '∞'} ` +
           `(${bargeInConsecutiveRef.current}/${BARGE_CONSECUTIVE})`
         );
+        // Start speculative capture on the FIRST candidate so the user's
+        // leading edge isn't lost during the confirmation window. The ring
+        // buffer adds a 400ms pre-roll (covers the frame that first crossed
+        // threshold plus the ScriptProcessor's own callback lag).
+        // If the candidate turns out to be a false alarm (miss below), the
+        // capture is torn down and an audio_discard is sent to the backend.
+        if (bargeInConsecutiveRef.current === 1 && !captureActiveRef.current) {
+          startCapture({ prefixSec: 0.4 });
+        }
         if (bargeInConsecutiveRef.current >= BARGE_CONSECUTIVE) {
           console.log('[BargeIn] Confirmed — real speech detected, interrupting TTS');
           stopBargeInDetector();
           interruptPlayback();
           isProcessingRef.current = false;
           setIsProcessing(false);
-          // Capture starts immediately — don't lose the leading edge of the
-          // user's utterance while we wait for the grace timer.
-          startSpeechChunkStreaming().catch((err) => {
-            console.error('[BargeIn] Failed to start chunk streaming:', err);
-          });
-          // Grace period before re-enabling VAD: the interrupted TTS chunk
-          // leaves room echo for ~150-200ms. ttsActiveRef was already cleared
-          // by interruptPlayback(), so resumeVAD() will allow onSpeechStart.
-          setTimeout(resumeVAD, 200);
+          // Capture is already running from the first candidate; nothing to
+          // restart here. Resume VAD immediately — TTS is already stopped
+          // (interruptPlayback), and the browser's AEC handles any residual
+          // speaker decay that's still in the mic within ~20 ms.
+          resumeVAD();
         }
       } else {
-        bargeInConsecutiveRef.current = 0;
+        if (bargeInConsecutiveRef.current > 0) {
+          bargeInConsecutiveRef.current = 0;
+          // Speculative capture started on a false-positive candidate —
+          // discard it without committing anything to the backend.
+          if (captureActiveRef.current) {
+            stopCapture(false).catch(() => {});
+          }
+        }
       }
     }, BARGE_POLL_MS);
-  }, [stopBargeInDetector, interruptPlayback, resumeVAD, startSpeechChunkStreaming]);
+  }, [stopBargeInDetector, interruptPlayback, resumeVAD, startCapture, stopCapture]);
 
   // Keep the forward-declared ref in sync so enqueueAudio (defined earlier)
   // can reach startBargeInDetector without a circular dependency.
@@ -679,19 +765,19 @@ export function useVoiceConversation() {
     // time onSpeechEnd fires, playback is already torn down.
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.log('[VAD] WebSocket not open, ignoring');
-      await stopSpeechChunkStreaming(false);
+      await stopCapture(false);
       return;
     }
 
-    // Check minimum speech length (~0.5 seconds at 16kHz)
-    if (audioFloat32.length < 8000) {
-      console.log(`[VAD] Speech too short (${(audioFloat32.length / 16000).toFixed(2)}s), ignoring`);
-      await stopSpeechChunkStreaming(false);
-      return;
-    }
-
+    // We intentionally do NOT short-circuit on audioFloat32 length here.
+    // In barge-in scenarios, VAD only captures audio from after it was
+    // resumed (post-interrupt), while our streamed capture includes the
+    // ring-buffer prefix from before VAD saw any frames — so VAD's length
+    // can be shorter than the real utterance. The backend has its own
+    // min-length gate (700 ms) that treats the streamed capture as
+    // authoritative.
     const durationSecs = (audioFloat32.length / 16000).toFixed(1);
-    console.log(`[VAD] ━━━ Speech captured: ${durationSecs}s (${audioFloat32.length} samples) ━━━`);
+    console.log(`[VAD] ━━━ Speech captured: ${durationSecs}s (${audioFloat32.length} VAD samples) ━━━`);
 
     // DO NOT pause VAD here. We need it to keep listening during the entire
     // processing + TTS playback so the user can barge in. Barge-in is handled
@@ -703,14 +789,14 @@ export function useVoiceConversation() {
     setStatusMessage('Finalizing speech...');
 
     try {
-      await stopSpeechChunkStreaming(true);
+      await stopCapture(true);
     } catch (err) {
       console.error('[VAD] Failed to finalize streamed utterance:', err);
       isProcessingRef.current = false;
       setIsProcessing(false);
       resumeVAD();
     }
-  }, [resumeVAD, stopSpeechChunkStreaming]);
+  }, [resumeVAD, stopCapture]);
 
   // ── Load VAD bundle via script tag (avoids CJS/ESM issues with Vite) ──
   const ensureOnnxRuntimeGlobal = useCallback(async () => {
@@ -769,29 +855,49 @@ export function useVoiceConversation() {
         channelCount: 1,
         sampleRate: 16000,
       },
-      // Silero VAD thresholds — tuned for natural conversation
-      positiveSpeechThreshold: 0.80,  // High confidence to start speech (filters noise)
-      negativeSpeechThreshold: 0.35,  // Lower threshold to end speech
-      redemptionMs: 1200,             // 1.2s of silence before ending utterance (faster, more natural)
-      minSpeechMs: 400,               // Minimum 0.4s of speech to count
-      preSpeechPadMs: 300,            // Capture 0.3s before speech starts
-      submitUserSpeechOnPause: true,  // Submit audio even if VAD is paused mid-speech
+      // Silero VAD thresholds — balanced for noisy environments
+      // positiveSpeechThreshold: how confident Silero must be to START an utterance.
+      //   Too high (0.85+) → misses soft/distant speech. 0.75 catches real speech while
+      //   still rejecting pure background noise which rarely exceeds 0.65–0.70.
+      positiveSpeechThreshold: 0.75,
+      // negativeSpeechThreshold: confidence below which silence is declared.
+      //   Slightly higher than default so ambient noise doesn't keep extending the segment.
+      negativeSpeechThreshold: 0.45,
+      // redemptionMs: how long Silero waits in silence before ending the utterance.
+      //   1500 ms allows natural speech pauses (thinking, breathing) without false endings.
+      redemptionMs: 1500,
+      // minSpeechMs: ignore detections shorter than this — filters clicks and very short bursts.
+      //   350 ms lets short answers ("yes", "no", "ok") through without opening the door to noise spikes.
+      minSpeechMs: 350,
+      // preSpeechPadMs: audio captured before onSpeechStart fires.
+      //   300 ms ensures the first phoneme of each word is never clipped.
+      preSpeechPadMs: 300,
+      // submitUserSpeechOnPause: when vad.pause() is called mid-speech, this
+      // decides whether Silero submits the partial utterance via onSpeechEnd.
+      // We want FALSE: if the assistant starts talking over the user (race
+      // between TTS and user mid-sentence), submitting the half-sentence
+      // produces garbage text and triggers an unwanted RAG turn. Dropping
+      // the partial is the safer behaviour — the user can just speak again.
+      submitUserSpeechOnPause: false,
 
       onSpeechStart: () => {
         console.log('[VAD] Speech started');
 
-        // Primary gate: ttsActiveRef is set at 'transcription' (before any
-        // audio plays) and cleared only in resumeVAD(). This catches VAD
-        // worker frames that were queued before pause() took full effect,
-        // as well as any race at the first chunk boundary.
-        // Secondary gate: isPlayingRef catches the case where ttsActiveRef
-        // was somehow not set (e.g. TTS with no prior transcription event).
+        // Primary gate: ttsActiveRef is set on the FIRST audio_chunk of a
+        // turn (not on `transcription`), so onSpeechStart CAN fire during
+        // the RAG window — which is exactly what we want for mid-RAG
+        // barge-in. Once TTS is playing, this ref catches VAD worker
+        // frames that were queued before pause() took full effect.
+        // Secondary gate: isPlayingRef catches an edge case where TTS
+        // started without a prior transcription event.
         if (ttsActiveRef.current || isPlayingRef.current) {
           console.log('[VAD] onSpeechStart suppressed (TTS active)');
           return;
         }
 
-        // Mid-RAG barge-in: cancel the processing turn.
+        // Mid-RAG barge-in: user started speaking after transcription was
+        // received but before the first TTS chunk arrived. Cancel the
+        // in-flight turn server-side and fall through to normal capture.
         if (isProcessingRef.current) {
           console.log('[VAD] Barge-in during processing — cancelling previous turn');
           interruptPlayback();
@@ -804,9 +910,13 @@ export function useVoiceConversation() {
         setStatus('listening');
         setStatusMessage('Listening...');
         setError(null);
-        startSpeechChunkStreaming().catch((err) => {
-          console.error('[Stream] Failed to start chunk streaming:', err);
-        });
+        // Flip the capture flag (synchronous; no getUserMedia latency) and
+        // prepend the last 300 ms from the ring buffer so we recover audio
+        // from before VAD crossed its confidence threshold. This matches
+        // VAD's own preSpeechPadMs so the backend sees a consistent
+        // pre-speech pad. If capture is already active (e.g. started by the
+        // barge-in detector just before VAD resumed), this is a no-op.
+        startCapture({ prefixSec: 0.3 });
       },
 
       onSpeechEnd: (audio) => {
@@ -818,7 +928,7 @@ export function useVoiceConversation() {
         // Speech was too short — VAD discarded it
         console.log('[VAD] Misfire (too short, ignored)');
         setIsUserTalking(false);
-        stopSpeechChunkStreaming(false).catch(() => {});
+        stopCapture(false).catch(() => {});
       },
     });
 
@@ -832,13 +942,13 @@ export function useVoiceConversation() {
     handleSpeechEnd,
     loadVADBundle,
     ensureOnnxRuntimeGlobal,
-    startSpeechChunkStreaming,
-    stopSpeechChunkStreaming,
+    startCapture,
+    stopCapture,
     interruptPlayback,
   ]);
 
   const stopVAD = useCallback(async () => {
-    await stopSpeechChunkStreaming(false).catch(() => {});
+    await stopCapture(false).catch(() => {});
 
     if (vadRef.current) {
       try {
@@ -851,7 +961,7 @@ export function useVoiceConversation() {
     }
     setIsListening(false);
     setIsUserTalking(false);
-  }, [stopSpeechChunkStreaming]);
+  }, [stopCapture]);
 
   // ── WebSocket Connection ──
   const connect = useCallback(async (language = null) => {
@@ -906,18 +1016,17 @@ export function useVoiceConversation() {
             currentTranscriptionRef.current = msg.text || '';
             setCurrentTranscription(msg.text || '');
             setStatusMessage('Got it! Thinking...');
-            // Arm the software TTS gate. onSpeechStart will suppress any
-            // VAD detections from here until resumeVAD() is called.
-            ttsActiveRef.current = true;
-            // Pre-emptively pause VAD here, before any TTS arrives.
-            // Waiting until the first audio_chunk to pause is too late:
-            // decodeAudioData is async, so audio can hit the speakers while
-            // VAD's internal frame queue still has unprocessed samples —
-            // those frames contain echo and trigger a false onSpeechStart.
-            // Pausing now gives VAD time to fully drain before any playback.
-            if (vadRef.current) {
-              try { vadRef.current.pause(); } catch { /* already paused */ }
-            }
+            // IMPORTANT: VAD is intentionally NOT paused here. The RAG
+            // processing window between transcription and the first TTS
+            // chunk can easily take 2–5 s. If VAD were paused over that
+            // window, any user speech during it would be silently dropped
+            // (no onSpeechStart fires, and the barge-in detector doesn't
+            // start until audio actually plays). Instead, we pause VAD
+            // on the first audio_chunk below — the moment TTS becomes
+            // audible and echo becomes a real concern. If the user speaks
+            // during the RAG window, onSpeechStart still fires and hits
+            // the `isProcessingRef` branch, which cancels the in-flight
+            // turn cleanly.
             break;
 
           case 'partial_transcription':
@@ -939,13 +1048,19 @@ export function useVoiceConversation() {
               console.log(`[Audio] Dropped stale audio_chunk ${msg.index}/${msg.total} (post-barge-in)`);
               break;
             }
-            // Belt-and-suspenders: pause VAD synchronously before decode
-            // begins. The transcription handler already did this, but in
-            // the barge-in path the VAD was just resumed and may have
-            // queued audio frames that haven't been processed yet. A second
-            // synchronous pause here costs nothing and closes that window.
-            if (vadRef.current && !isPlayingRef.current) {
-              try { vadRef.current.pause(); } catch { /* already paused */ }
+            // First audio_chunk of this turn → arm the TTS gate and pause
+            // VAD synchronously, BEFORE decode begins. Doing this here
+            // (rather than on `transcription`) keeps VAD listening during
+            // the RAG window so the user can interrupt at any time. The
+            // ttsActiveRef gate also catches any VAD frames that were
+            // queued inside the worker before pause() took full effect —
+            // they would otherwise contain TTS echo and fire a spurious
+            // onSpeechStart at the moment the first audio chunk plays.
+            if (!ttsActiveRef.current) {
+              ttsActiveRef.current = true;
+              if (vadRef.current) {
+                try { vadRef.current.pause(); } catch { /* already paused */ }
+              }
             }
             enqueueAudio(msg.data, msg.index, msg.total);
             break;
@@ -1027,9 +1142,21 @@ export function useVoiceConversation() {
     setIsConnected(true);
     console.log('[WS] ✓ Voice WebSocket connected');
 
-    // Spin up the echo monitor before VAD so the analysers are live the first
-    // time the user speaks (and the first time TTS plays back).
-    await startEchoMonitor();
+    // Open the persistent user-mic graph BEFORE VAD so the analyser, ring
+    // buffer, and capture tap are all live the first time the user speaks
+    // (and the first time TTS plays back). If this fails we abort — the
+    // pipeline cannot function without the mic.
+    try {
+      await ensureUserMic();
+    } catch (err) {
+      const message = err?.message || 'Microphone access denied';
+      console.error('[UserMic] Failed to initialize:', err);
+      setError(message);
+      setStatus('idle');
+      setStatusMessage(message);
+      ws.close();
+      throw new Error(message);
+    }
 
     // Start Silero VAD
     try {
@@ -1043,7 +1170,7 @@ export function useVoiceConversation() {
       ws.close();
       throw new Error(message);
     }
-  }, [startVAD, stopVAD, enqueueAudio, getAudioContext, resumeVAD, startEchoMonitor]);
+  }, [startVAD, stopVAD, enqueueAudio, getAudioContext, resumeVAD, ensureUserMic]);
 
   const disconnect = useCallback(() => {
     isConnectedRef.current = false;
@@ -1056,7 +1183,7 @@ export function useVoiceConversation() {
     wsRef.current = null;
 
     stopVAD();
-    stopEchoMonitor();
+    teardownUserMic();
     stopBargeInDetector();
 
     // Close AudioContext
@@ -1079,7 +1206,7 @@ export function useVoiceConversation() {
     setCurrentTranscription('');
     setCurrentAnswer('');
     setError(null);
-  }, [stopVAD, stopEchoMonitor, stopBargeInDetector]);
+  }, [stopVAD, teardownUserMic, stopBargeInDetector]);
 
   // Cleanup on unmount
   useEffect(() => {

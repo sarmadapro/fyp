@@ -17,7 +17,7 @@ from fastapi import WebSocket
 from app.core.config import settings
 from app.services.chat_service import chat, chat_stream
 from app.services.document_service import ClientDocumentService
-from app.services.analytics_service import start_trace, mark, record_error, finish_trace
+from app.services.analytics_service import start_trace, mark, record_error, finish_trace, set_audio_duration
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,9 @@ _TIMEOUT = httpx.Timeout(timeout=120.0, connect=10.0)
 _STT_TURN_TIMEOUT_SEC = 180.0
 _RAG_TURN_TIMEOUT_SEC = 90.0
 _TTS_CHUNK_TIMEOUT_SEC = 60.0
-_PARTIAL_STT_INTERVAL_SEC = 0.35
-_PARTIAL_STT_MIN_AUDIO_SEC = 0.35
-_PARTIAL_STT_WINDOW_SEC = 3.0
+_PARTIAL_STT_INTERVAL_SEC = 0.25       # emit a partial every 250 ms (was 350 ms)
+_PARTIAL_STT_MIN_AUDIO_SEC = 0.30      # need at least 300 ms before attempting partial
+_PARTIAL_STT_WINDOW_SEC = 2.0          # sliding window over last 2 s (was 3 s → lower latency)
 _PARTIAL_STT_MAX_TEXT_CHARS = 240
 
 # Shared async HTTP client (connection pooling, much faster than per-request)
@@ -432,7 +432,8 @@ async def handle_voice_conversation(websocket: WebSocket, client=None, language:
                 sample_rate = int(streaming_state["sample_rate"])
                 streaming_state = _new_streaming_session_state()
 
-                if len(buffered_pcm) < 1000:
+                # 11200 bytes = 700 ms of 16-bit 16 kHz mono — matches VAD minSpeechMs + padding
+                if len(buffered_pcm) < 11200:
                     logger.info(f"Committed audio too short ({len(buffered_pcm)} bytes), skipping.")
                     await websocket.send_json({"type": "listening"})
                     continue
@@ -483,7 +484,7 @@ async def handle_voice_conversation(websocket: WebSocket, client=None, language:
                     await websocket.send_json({"type": "listening"})
                     continue
 
-                if len(combined_audio) < 1000:
+                if len(combined_audio) < 11200:
                     logger.info(f"Audio too short ({len(combined_audio)} bytes), skipping.")
                     await websocket.send_json({"type": "listening"})
                     continue
@@ -665,7 +666,12 @@ async def _process_voice_turn(
 
     stt_time = time.time() - turn_start
     detected_language = transcription.get("language", "en") or "en"
-    logger.info(f"[Turn] STT: {stt_time:.2f}s -> '{user_text}' (lang={detected_language})")
+    audio_dur = transcription.get("audio_duration_s")
+    if audio_dur is not None:
+        set_audio_duration(trace_id, audio_dur)
+    logger.info(
+        f"[Turn] STT: {stt_time:.2f}s | audio={audio_dur}s -> '{user_text}' (lang={detected_language})"
+    )
 
     if not user_text:
         record_error(trace_id, "Empty transcription")
@@ -755,6 +761,8 @@ async def _process_voice_turn(
                                 first_tts_done = True
                             chunk_index += 1
                             b64_audio = base64.b64encode(audio_bytes_out).decode("utf-8")
+                            if chunk_index == 1:
+                                mark(trace_id, "first_word", "end")
                             await websocket.send_json({
                                 "type": "audio_chunk",
                                 "data": b64_audio,

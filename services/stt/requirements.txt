@@ -7,3 +7,8 @@ python-dotenv==1.1.1
 # STT
 faster-whisper==1.1.1
 requests==2.32.3
+
+# Audio preprocessing
+noisereduce==3.0.3
+scipy>=1.10.0
+numpy>=1.24.0

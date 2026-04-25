@@ -30,7 +30,15 @@
       "Bash(npm install *)",
       "Bash(curl -s http://localhost:8000/health)",
       "Bash(python tests/rag_accuracy_test.py)",
-      "Bash(curl -s --max-time 3 http://localhost:8000/health)"
+      "Bash(curl -s --max-time 3 http://localhost:8000/health)",
+      "WebSearch",
+      "Bash(venv/Scripts/pip install *)",
+      "Bash(venv/Scripts/python -c \"import noisereduce, scipy, numpy; print\\('OK noisereduce', noisereduce.__version__\\); print\\('OK scipy', scipy.__version__\\); print\\('OK numpy', numpy.__version__\\)\")",
+      "Bash(venv/Scripts/python -c \"import noisereduce, scipy, numpy; print\\('noisereduce: OK'\\); print\\('scipy:', scipy.__version__\\); print\\('numpy:', numpy.__version__\\)\")",
+      "Bash(venv/Scripts/python -c \"import ast, pathlib; ast.parse\\(pathlib.Path\\('main.py'\\).read_text\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(node --check src/hooks/useVoiceConversation.js)",
+      "Bash(npx --offline eslint src/hooks/useVoiceConversation.js)",
+      "Bash(python download_model.py)"
     ]
   }
 }
