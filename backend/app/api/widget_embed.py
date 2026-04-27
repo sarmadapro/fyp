@@ -266,7 +266,6 @@ function VoiceRAGWidget() {
     if (!vr.queue.length) {
       vr.playing=false; vr.ttsActive=false;
       setWaveActive(false); setIsListening(true); setVoiceStatus('Listening…');
-      if(vr.vad) try{vr.vad.start();}catch(_){}
       return;
     }
     vr.playing=true;
@@ -291,7 +290,6 @@ function VoiceRAGWidget() {
     if (!vr.playing) {
       vr.ttsActive=true; vr.playing=true;
       setWaveActive(true); setIsListening(false); setVoiceStatus('Speaking…');
-      if(vr.vad) try{vr.vad.pause();}catch(_){}
       playNext();
     }
   }
@@ -423,7 +421,7 @@ function VoiceRAGWidget() {
         preSpeechPadMs: 300,
         submitUserSpeechOnPause: true,
         onSpeechStart: () => {
-          if(vr.ttsActive) interruptPlayback();
+          if(vr.playing) interruptPlayback();
           setIsListening(true); setWaveActive(true); setVoiceStatus('Hearing you…');
           startCapture();
         },
@@ -561,7 +559,7 @@ function VoiceRAGWidget() {
               <div style={{ height:48, display:'flex', alignItems:'center', opacity:waveActive?1:0.3, transition:'opacity 0.4s' }}>
                 <WaveformBars active={waveActive} />
               </div>
-              <PulseRing listening={isListening} onClick={()=>{ if(vr.ttsActive) interruptPlayback(); }} />
+              <PulseRing listening={isListening} onClick={()=>{ if(vr.playing||vr.ttsActive) interruptPlayback(); }} />
               <div style={{ fontSize:11, color:'#ccc', letterSpacing:'0.2px', marginTop:'auto' }}>Powered by VoiceRAG</div>
             </div>
           )}

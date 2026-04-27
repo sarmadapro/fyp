@@ -78,6 +78,8 @@ export function useVoiceConversation() {
   // through playbackGainRef so this analyser sees all assistant audio.
   const playbackGainRef = useRef(null);
   const playbackAnalyserRef = useRef(null);
+  const activeHtmlAudioRef = useRef(null);
+  const resumeTimeoutRef = useRef(null);
   // setInterval handle for the barge-in energy polling loop.
   const bargeInDetectorRef = useRef(null);
   // Consecutive samples above threshold — avoids single-spike false triggers.
@@ -295,9 +297,16 @@ export function useVoiceConversation() {
 
   // Forward-declared — defined after interruptPlayback + resumeVAD.
   const startBargeInDetectorRef = useRef(null);
+  const cancelPendingResume = useCallback(() => {
+    if (resumeTimeoutRef.current) {
+      clearTimeout(resumeTimeoutRef.current);
+      resumeTimeoutRef.current = null;
+    }
+  }, []);
 
   // ── Resume VAD Safely ──
   const resumeVAD = useCallback(() => {
+    cancelPendingResume();
     // Clear the software TTS gate — from this point on, onSpeechStart is
     // allowed to process detections again.
     ttsActiveRef.current = false;
@@ -312,7 +321,22 @@ export function useVoiceConversation() {
       setStatus('listening');
       setStatusMessage('');
     }
-  }, []);
+  }, [cancelPendingResume]);
+
+  const scheduleResumeVAD = useCallback((delayMs = 500) => {
+    cancelPendingResume();
+    resumeTimeoutRef.current = window.setTimeout(() => {
+      resumeTimeoutRef.current = null;
+      if (
+        !isConnectedRef.current ||
+        isPlayingRef.current ||
+        audioQueueRef.current.length > 0
+      ) {
+        return;
+      }
+      resumeVAD();
+    }, delayMs);
+  }, [cancelPendingResume, resumeVAD]);
 
   // ── Utterance Audio Chunk Streaming (PCM -> WAV) ──
   const blobToBase64 = useCallback((blob) => {
@@ -496,6 +520,7 @@ export function useVoiceConversation() {
 
   // ── Barge-in: stop current TTS playback + tell backend to cancel ──
   const interruptPlayback = useCallback(() => {
+    cancelPendingResume();
     stopBargeInDetector();
     // User is taking control — clear TTS gate so VAD can listen again
     // (after the grace period in the barge-in detector).
@@ -522,6 +547,18 @@ export function useVoiceConversation() {
       activeSourceRef.current = null;
     }
 
+    if (activeHtmlAudioRef.current) {
+      try {
+        activeHtmlAudioRef.current.onended = null;
+        activeHtmlAudioRef.current.onerror = null;
+        activeHtmlAudioRef.current.pause();
+        activeHtmlAudioRef.current.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      activeHtmlAudioRef.current = null;
+    }
+
     isPlayingRef.current = false;
     setIsSpeaking(false);
     // Drop any audio_chunk messages that were in flight before the backend
@@ -532,7 +569,7 @@ export function useVoiceConversation() {
       wsRef.current.send(JSON.stringify({ type: 'interrupt' }));
       console.log('[Audio] Barge-in: sent interrupt to backend');
     }
-  }, [stopBargeInDetector]);
+  }, [cancelPendingResume, stopBargeInDetector]);
 
   // ── Barge-in energy detector (polling loop, adaptive) ──
   // Phase 1 — Calibration (first BARGE_CALIBRATION_SAMPLES ticks):
@@ -634,9 +671,7 @@ export function useVoiceConversation() {
       stopBargeInDetector();
       // Short grace period: lets speaker echo die off before VAD listens again.
       // Without this, the tail of the last TTS chunk can trigger onSpeechStart.
-      setTimeout(() => {
-        resumeVAD();
-      }, 500);
+      scheduleResumeVAD(500);
       return;
     }
 
@@ -696,7 +731,7 @@ export function useVoiceConversation() {
       // Try fallback
       playWithAudioElement(audioData, index, total);
     }
-  }, [getAudioContext, resumeVAD]);
+  }, [getAudioContext, scheduleResumeVAD, stopBargeInDetector]);
 
   // ── Fallback: Play with Audio element ──
   const playWithAudioElement = useCallback((audioData, index, total) => {
@@ -710,14 +745,21 @@ export function useVoiceConversation() {
       const blob = new Blob([bytes], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      activeHtmlAudioRef.current = audio;
 
       audio.onended = () => {
+        if (activeHtmlAudioRef.current === audio) {
+          activeHtmlAudioRef.current = null;
+        }
         URL.revokeObjectURL(url);
         console.log(`[Audio Fallback] Chunk ${index}/${total} finished`);
         playNextInQueue();
       };
 
       audio.onerror = (e) => {
+        if (activeHtmlAudioRef.current === audio) {
+          activeHtmlAudioRef.current = null;
+        }
         URL.revokeObjectURL(url);
         console.error(`[Audio Fallback] Chunk ${index}/${total} error:`, e);
         // Skip this chunk and continue with next
@@ -725,6 +767,9 @@ export function useVoiceConversation() {
       };
 
       audio.play().catch((e) => {
+        if (activeHtmlAudioRef.current === audio) {
+          activeHtmlAudioRef.current = null;
+        }
         URL.revokeObjectURL(url);
         console.error(`[Audio Fallback] Play rejected for ${index}/${total}:`, e);
         playNextInQueue();
@@ -739,6 +784,7 @@ export function useVoiceConversation() {
   const enqueueAudio = useCallback((audioData, index, total) => {
     console.log(`[Audio] Enqueuing chunk ${index}/${total} (${(audioData.length * 0.75 / 1024).toFixed(0)}KB)`);
     audioQueueRef.current.push({ audioData, index, total });
+    cancelPendingResume();
 
     if (!isPlayingRef.current) {
       isPlayingRef.current = true;
@@ -754,7 +800,7 @@ export function useVoiceConversation() {
       }
       playNextInQueue();
     }
-  }, [playNextInQueue]);
+  }, [cancelPendingResume, playNextInQueue]);
 
   // ── Handle Speech End from VAD ──
   const handleSpeechEnd = useCallback(async (audioFloat32) => {
@@ -1174,6 +1220,19 @@ export function useVoiceConversation() {
 
   const disconnect = useCallback(() => {
     isConnectedRef.current = false;
+    cancelPendingResume();
+
+    if (activeHtmlAudioRef.current) {
+      try {
+        activeHtmlAudioRef.current.onended = null;
+        activeHtmlAudioRef.current.onerror = null;
+        activeHtmlAudioRef.current.pause();
+        activeHtmlAudioRef.current.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      activeHtmlAudioRef.current = null;
+    }
 
     // Send end session
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -1206,7 +1265,7 @@ export function useVoiceConversation() {
     setCurrentTranscription('');
     setCurrentAnswer('');
     setError(null);
-  }, [stopVAD, teardownUserMic, stopBargeInDetector]);
+  }, [cancelPendingResume, stopVAD, teardownUserMic, stopBargeInDetector]);
 
   // Cleanup on unmount
   useEffect(() => {

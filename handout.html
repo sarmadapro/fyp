@@ -3,19 +3,298 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Voice Assistant Widget Demo</title>
+  <title>VoiceRAG Demo</title>
+  <style>
+    :root {
+      --bg: #f5f1ea;
+      --surface: rgba(255, 255, 255, 0.78);
+      --text: #1f2933;
+      --muted: #5b6875;
+      --line: rgba(31, 41, 51, 0.1);
+      --accent: #1f7a6b;
+      --accent-soft: #d8eee9;
+      --shadow: 0 20px 60px rgba(31, 41, 51, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(31, 122, 107, 0.14), transparent 30%),
+        linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+
+    .page {
+      width: min(1100px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 56px;
+    }
+
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nav-note {
+      color: var(--muted);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 0.95rem;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 28px;
+      align-items: stretch;
+    }
+
+    .panel,
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .panel {
+      padding: 44px;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 18px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font: 600 0.82rem/1 Arial, Helvetica, sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 18px;
+      font-size: clamp(2.5rem, 5vw, 4.8rem);
+      line-height: 0.96;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      max-width: 60ch;
+      margin: 0 0 28px;
+      color: var(--muted);
+      font: 400 1.05rem/1.7 Arial, Helvetica, sans-serif;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 150px;
+      padding: 14px 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      font: 600 0.95rem/1 Arial, Helvetica, sans-serif;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-secondary {
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid var(--line);
+    }
+
+    .stat strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 1.35rem;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font: 400 0.92rem/1.5 Arial, Helvetica, sans-serif;
+    }
+
+    .side {
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      padding: 24px;
+    }
+
+    .card h2,
+    .card h3 {
+      margin: 0 0 12px;
+      font-size: 1.25rem;
+    }
+
+    .card p,
+    .card li {
+      color: var(--muted);
+      font: 400 0.95rem/1.7 Arial, Helvetica, sans-serif;
+    }
+
+    .card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      text-align: center;
+      font: 400 0.9rem/1.6 Arial, Helvetica, sans-serif;
+    }
+
+    @media (max-width: 860px) {
+      .hero,
+      .grid,
+      .meta {
+        grid-template-columns: 1fr;
+      }
+
+      .panel {
+        padding: 28px;
+      }
+
+      .nav {
+        margin-bottom: 32px;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div class="page">
+    <header class="nav">
+      <div class="brand">VoiceRAG Demo</div>
+      <div class="nav-note">Interactive widget embedded on a simple landing page</div>
+    </header>
 
-  <h1>Welcome</h1>
-  <p>Use the floating chat bubble in the corner.</p>
+    <main class="hero">
+      <section class="panel">
+        <div class="eyebrow">Live Assistant Demo</div>
+        <h1>Ask your documents by voice or chat.</h1>
+        <p class="lead">
+          This demo page shows how the VoiceRAG widget can sit inside a clean website experience.
+          Use the floating assistant in the corner to ask questions, test retrieval, and try voice interaction.
+        </p>
 
-  <!-- Floating Bubble Plugin -->
+        <div class="actions">
+          <a class="btn btn-primary" href="#features">View Features</a>
+          <a class="btn btn-secondary" href="#how-it-works">How It Works</a>
+        </div>
+
+        <div class="meta">
+          <div class="stat">
+            <strong>Voice + Text</strong>
+            <span>Try both voice conversations and standard chat inside the same widget.</span>
+          </div>
+          <div class="stat">
+            <strong>RAG Answers</strong>
+            <span>Responses are grounded in uploaded content instead of generic assistant memory.</span>
+          </div>
+          <div class="stat">
+            <strong>Quick Demo</strong>
+            <span>Perfect for showing your project during presentations or stakeholder walkthroughs.</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <div class="card">
+          <h2>What to test</h2>
+          <ul>
+            <li>Ask a direct question from your uploaded document.</li>
+            <li>Use a follow-up like "tell me more about that."</li>
+            <li>Switch to voice mode and test a full spoken query.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Demo Flow</h3>
+          <p>
+            Speech goes through STT, your question is retrieved against indexed content,
+            the LLM answers from context, and TTS speaks the response back.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <section class="grid" id="features">
+      <div class="card">
+        <h3>Document Q&amp;A</h3>
+        <p>Upload PDFs, TXT, or DOCX files and ask natural language questions against them.</p>
+      </div>
+      <div class="card" id="how-it-works">
+        <h3>Grounded Responses</h3>
+        <p>The assistant is designed to stay tied to retrieved context for more reliable answers.</p>
+      </div>
+      <div class="card">
+        <h3>Embeddable Widget</h3>
+        <p>This page demonstrates how the assistant can be embedded into a normal website with minimal setup.</p>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      Open the floating assistant bubble to start the demo.
+    </p>
+  </div>
+
   <script 
     src="http://localhost:8000/widget.js"
     data-api-key="vrag_7d21d22c7d4ed0d2abb20b3745c1a8d231d86af9e506a2b2"
     data-api-url="http://localhost:8000">
   </script>
-
 </body>
 </html>

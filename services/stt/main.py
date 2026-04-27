@@ -81,6 +81,10 @@ _model_lock = threading.Lock()
 _model_loading = False
 _model_error = None
 
+_last_inference_at: float = 0.0   # updated by real requests AND keepalive
+_KEEPALIVE_IDLE_SEC: float = 8 * 60   # run keepalive when idle > 8 min
+_KEEPALIVE_CHECK_SEC: float = 60      # poll every 60 s
+
 # ── Lazy-loaded preprocessing libs ──────────────────────────────────────────
 # We import noisereduce / scipy only when the first transcription request
 # arrives so startup is not blocked if those wheels are still installing.
@@ -287,17 +291,86 @@ def get_model():
     return _model
 
 
+def _run_warmup_inference():
+    """
+    Run a real inference pass immediately after model load.
+    This forces CTranslate2 / ONNX to JIT-compile all CUDA/CPU kernels
+    so the first genuine user request is fast.
+    """
+    global _last_inference_at
+    try:
+        _ensure_preprocess_libs()
+        model = get_model()
+
+        # 0.5 s of a very quiet 440 Hz tone — enough for the full pipeline
+        # (VAD, encoder, decoder) to execute without being filtered as silence.
+        sr = 16000
+        n = sr // 2
+        t_arr = np.linspace(0, 0.5, n, dtype=np.float32)
+        tone = (np.sin(2 * np.pi * 440 * t_arr) * 0.02).astype(np.float32)
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            tmp_path = f.name
+        _write_float32_as_wav(tone, sr, tmp_path)
+
+        t0 = time.time()
+        audio_path = _preprocess_audio(tmp_path)
+        segs, _ = model.transcribe(
+            audio_path,
+            vad_filter=True,
+            vad_parameters={"threshold": 0.45},
+            beam_size=1,     # minimal beam — we only want kernel warmup
+        )
+        list(segs)           # consume the lazy iterator to force computation
+        elapsed = time.time() - t0
+        logger.info(f"[STT] Warmup inference complete in {elapsed:.2f}s — model is hot.")
+
+        _last_inference_at = time.time()
+
+        for p in (tmp_path, tmp_path + "_clean.wav"):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+    except Exception as e:
+        logger.warning(f"[STT] Warmup inference failed (non-fatal): {e}")
+
+
+async def _keepalive_loop():
+    """
+    Background loop that re-runs a short inference whenever the model has been
+    idle for _KEEPALIVE_IDLE_SEC.  Prevents CTranslate2 from releasing GPU
+    memory / CUDA context and keeps preprocessing libs warm.
+    """
+    while True:
+        await asyncio.sleep(_KEEPALIVE_CHECK_SEC)
+        if _model is None:
+            continue
+        idle = time.time() - _last_inference_at
+        if idle >= _KEEPALIVE_IDLE_SEC:
+            logger.info(
+                f"[STT] Keep-alive triggered (idle {idle / 60:.1f} min) — running warmup inference."
+            )
+            try:
+                await asyncio.to_thread(_run_warmup_inference)
+            except Exception as e:
+                logger.warning(f"[STT] Keep-alive failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_warmup():
     async def _warm():
         try:
             await asyncio.to_thread(get_model)
-            # Also pre-import preprocessing libs in background.
             await asyncio.to_thread(_ensure_preprocess_libs)
+            # Full inference pass — not just weight loading
+            await asyncio.to_thread(_run_warmup_inference)
         except Exception as e:
             logger.error(f"STT warmup failed: {e}")
 
     asyncio.create_task(_warm())
+    asyncio.create_task(_keepalive_loop())
 
 
 # ── Health ───────────────────────────────────────────────────────────────────
@@ -333,6 +406,9 @@ async def transcribe(file: UploadFile = File(...), language: str | None = Form(d
     Accepts: WAV, WebM, MP3, OGG, FLAC, M4A
     Returns: {"text": str, "language": str, "duration": float}
     """
+    global _last_inference_at
+    _last_inference_at = time.time()
+
     audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="Empty audio file.")

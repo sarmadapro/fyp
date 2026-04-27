@@ -83,6 +83,10 @@ EDGE_TTS_VOICE_MAP: dict[str, str] = {
 _pipeline = None
 _kokoro_voice_ready = False  # True only after the voice file is confirmed cached
 
+_last_inference_at: float = 0.0   # updated by real requests AND keepalive
+_KEEPALIVE_IDLE_SEC: float = 8 * 60   # run keepalive when idle > 8 min
+_KEEPALIVE_CHECK_SEC: float = 60      # poll every 60 s
+
 
 def get_pipeline():
     """Load the Kokoro TTS pipeline (model weights only, no voice files)."""
@@ -231,17 +235,48 @@ async def _edge_tts_synthesize(text: str, language: str) -> bytes:
 
 # ── Startup & Health ─────────────────────────────────────────────────
 
+async def _keepalive_loop():
+    """
+    Background loop that re-synthesizes a short string whenever Kokoro has been
+    idle for _KEEPALIVE_IDLE_SEC.  Keeps the model loaded and ONNX/GPU context
+    alive so the next real request starts instantly.
+    """
+    global _last_inference_at
+    while True:
+        await asyncio.sleep(_KEEPALIVE_CHECK_SEC)
+        if not _kokoro_voice_ready:
+            continue
+        idle = time.time() - _last_inference_at
+        if idle >= _KEEPALIVE_IDLE_SEC:
+            logger.info(
+                f"[TTS] Keep-alive triggered (idle {idle / 60:.1f} min) — running warmup synthesis."
+            )
+            try:
+                await asyncio.to_thread(_kokoro_synthesize, "Ready.", TTS_VOICE)
+                _last_inference_at = time.time()
+                logger.info("[TTS] Keep-alive synthesis done.")
+            except Exception as e:
+                logger.warning(f"[TTS] Keep-alive failed: {e}")
+
+
 @app.on_event("startup")
 async def startup_warmup():
     async def _warm():
+        global _last_inference_at
         try:
             # Step 1: load the model weights
             await asyncio.to_thread(get_pipeline)
             # Step 2: force voice file download/cache with a test synthesis
             await asyncio.to_thread(_try_warm_kokoro_voice)
+            # _try_warm_kokoro_voice already runs a full synthesis pass,
+            # which warms up all kernels.  Stamp the inference clock so the
+            # keepalive doesn't immediately re-fire after startup.
+            _last_inference_at = time.time()
         except Exception as e:
             logger.error(f"TTS warmup failed: {e}")
+
     asyncio.create_task(_warm())
+    asyncio.create_task(_keepalive_loop())
 
 
 @app.get("/health")
@@ -276,7 +311,9 @@ async def synthesize(request: SynthesizeRequest):
     if len(request.text) > 5000:
         raise HTTPException(status_code=400, detail="Text too long. Maximum 5000 characters.")
 
-    start_time = time.time()
+    global _last_inference_at
+    _last_inference_at = time.time()
+    start_time = _last_inference_at
     lang = (request.language or "en").lower().split("-")[0]  # normalize "en-US" → "en"
 
     wav_bytes: bytes | None = None

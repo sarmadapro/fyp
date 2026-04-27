@@ -39,7 +39,36 @@ export function logout() {
 
 // ─── Core Request Helpers ──────────────────────────────────────────
 
-async function request(path, options = {}) {
+let _isRefreshing = false;
+let _refreshPromise = null;
+
+async function _tryRefreshToken() {
+  // Only one refresh at a time
+  if (_isRefreshing) return _refreshPromise;
+
+  _isRefreshing = true;
+  _refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include', // sends the HTTP-only refresh cookie
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error('Refresh failed');
+      const data = await res.json();
+      setToken(data.access_token);
+      if (data.client) {
+        localStorage.setItem('voicerag_client', JSON.stringify(data.client));
+      }
+      return data.access_token;
+    })
+    .finally(() => {
+      _isRefreshing = false;
+      _refreshPromise = null;
+    });
+
+  return _refreshPromise;
+}
+
+async function request(path, options = {}, _isRetry = false) {
   const url = `${API_BASE}${path}`;
   const headers = {
     ...options.headers,
@@ -57,11 +86,28 @@ async function request(path, options = {}) {
 
   const response = await fetch(url, {
     ...options,
+    credentials: 'include', // needed so refresh cookie is sent
     headers,
   });
 
+  // If 401 and we haven't retried yet — try to silently refresh the token
+  if (response.status === 401 && !_isRetry) {
+    try {
+      await _tryRefreshToken();
+      // Retry the original request once with the new token
+      return request(path, options, true);
+    } catch {
+      // Refresh also failed — user must log in again
+      setToken(null);
+      localStorage.removeItem('voicerag_client');
+      window.dispatchEvent(new CustomEvent('voicerag:unauthorized'));
+      const error = await response.json().catch(() => ({ detail: 'Session expired. Please log in again.' }));
+      throw new Error(error.detail || 'Session expired');
+    }
+  }
+
   if (response.status === 401) {
-    // Token expired — clear auth state
+    // Already retried — clear auth state
     setToken(null);
     localStorage.removeItem('voicerag_client');
     window.dispatchEvent(new CustomEvent('voicerag:unauthorized'));
