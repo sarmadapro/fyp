@@ -453,6 +453,7 @@ async def handle_voice_conversation(websocket: WebSocket, client=None, language:
                         filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
                         language=language,
+                        client_id=client_id or "",
                     )
                 )
 
@@ -500,6 +501,7 @@ async def handle_voice_conversation(websocket: WebSocket, client=None, language:
                         filename="recording.wav",
                         doc_service=_resolve_doc_service(client_id),
                         language=language,
+                        client_id=client_id or "",
                     )
                 )
 
@@ -544,6 +546,7 @@ async def _run_turn(
     filename: str = "recording.wav",
     doc_service=None,
     language: str | None = None,
+    client_id: str = "",
 ) -> None:
     """
     Wrapper that runs _process_voice_turn as a background task so the main
@@ -561,6 +564,7 @@ async def _run_turn(
             filename=filename,
             doc_service=doc_service,
             language=language,
+            client_id=client_id,
         )
         if new_conv_id:
             turn_state["conv_id"] = new_conv_id
@@ -592,6 +596,7 @@ async def _process_voice_turn(
     filename: str = "recording.wav",
     doc_service=None,
     language: str | None = None,
+    client_id: str = "",
 ) -> str | None:
     """
     Process a single voice turn:
@@ -602,7 +607,7 @@ async def _process_voice_turn(
     turn_start = time.time()
 
     # Start analytics trace for this voice turn
-    trace_id = start_trace(conversation_id or "", mode="voice", user_query="[audio]")
+    trace_id = start_trace(conversation_id or "", mode="voice", user_query="[audio]", client_id=client_id)
 
     # 1) STT
     await websocket.send_json({"type": "status", "message": "Transcribing..."})

@@ -38,7 +38,13 @@
       "Bash(venv/Scripts/python -c \"import ast, pathlib; ast.parse\\(pathlib.Path\\('main.py'\\).read_text\\(\\)\\); print\\('Syntax OK'\\)\")",
       "Bash(node --check src/hooks/useVoiceConversation.js)",
       "Bash(npx --offline eslint src/hooks/useVoiceConversation.js)",
-      "Bash(python download_model.py)"
+      "Bash(python download_model.py)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\USER\\\\Documents\\\\fyp\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(grep -E \"\\\\.md$|\\\\.txt$\")",
+      "Read(//mnt/c/Users/USER/Documents/fyp/**)",
+      "Bash(./venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

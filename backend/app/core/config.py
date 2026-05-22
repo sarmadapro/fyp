@@ -39,7 +39,10 @@ class Settings:
     ).split(",")
 
     # --- LLM Configuration ---
-    # Priority: DeepSeek → Groq → Ollama
+    # Priority: OpenAI → DeepSeek → Groq → Ollama
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
@@ -95,9 +98,14 @@ class Settings:
         self.CLIENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         # Resolve LLM provider with priority:
-        # 1. DeepSeek (if DEEPSEEK_API_KEY present) — primary, 128K context window
-        # 2. Groq (if GROQ_API_KEY present) — fast fallback
-        # 3. Ollama (default) — local offline fallback
+        # 1. OpenAI (if OPENAI_API_KEY present)
+        # 2. DeepSeek (if DEEPSEEK_API_KEY present)
+        # 3. Groq (if GROQ_API_KEY present) — fast fallback
+        # 4. Ollama (default) — local offline fallback
+        _openai_key_valid = (
+            bool(self.OPENAI_API_KEY)
+            and self.OPENAI_API_KEY not in ("your_openai_api_key_here", "")
+        )
         _deepseek_key_valid = (
             bool(self.DEEPSEEK_API_KEY)
             and self.DEEPSEEK_API_KEY not in ("your_deepseek_api_key_here", "")
@@ -107,7 +115,11 @@ class Settings:
             and self.GROQ_API_KEY not in ("your_groq_api_key_here", "")
         )
 
-        if _deepseek_key_valid:
+        if _openai_key_valid:
+            self.LLM_PROVIDER = "openai"
+            self.LLM_MODEL = self.OPENAI_MODEL
+            print(f"[CONFIG] LLM: OpenAI ({self.OPENAI_MODEL}) — key detected")
+        elif _deepseek_key_valid:
             self.LLM_PROVIDER = "deepseek"
             self.LLM_MODEL = self.DEEPSEEK_MODEL
             print(f"[CONFIG] LLM: DeepSeek ({self.DEEPSEEK_MODEL}) — key detected")

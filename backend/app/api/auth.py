@@ -36,6 +36,8 @@ from app.services.auth_service import (
     verify_email_token,
     set_password_reset_token,
     reset_password_with_token,
+    hash_password,
+    verify_password,
 )
 from app.models.database import Client, APIKey
 
@@ -102,6 +104,23 @@ class ResetPasswordRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: str
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str = ""
+    company_name: str = ""
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
 
 
 # ─── Auth Dependency ──────────────────────────────────────────────────
@@ -354,3 +373,39 @@ def reset_password_endpoint(req: ResetPasswordRequest, db: Session = Depends(get
             detail="Invalid or expired reset token. Please request a new link.",
         )
     return {"message": "Password reset successfully. Please log in with your new password."}
+
+
+@router.patch("/profile")
+def update_profile_endpoint(
+    req: UpdateProfileRequest,
+    current_client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    """Update the current client's display name and company name."""
+    company = req.company_name.strip()
+    if not company:
+        raise HTTPException(status_code=400, detail="Company name is required")
+    current_client.full_name = req.full_name.strip()
+    current_client.company_name = company
+    db.commit()
+    db.refresh(current_client)
+    return {
+        "id":           current_client.id,
+        "email":        current_client.email,
+        "full_name":    current_client.full_name or "",
+        "company_name": current_client.company_name,
+    }
+
+
+@router.post("/change-password")
+def change_password_endpoint(
+    req: ChangePasswordRequest,
+    current_client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    """Change password — requires the current password for verification."""
+    if not verify_password(req.current_password, current_client.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_client.hashed_password = hash_password(req.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}

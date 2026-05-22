@@ -5509,3 +5509,195 @@ body {
   .docs-format-grid { grid-template-columns: 1fr; }
   .docs-metrics-grid { grid-template-columns: 1fr; }
 }
+
+/* ─── Sidebar Avatar Button ─────────────────────────────────── */
+.sidebar-avatar-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: auto;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.sidebar-avatar-btn:hover {
+  background: var(--bg-glass-hover);
+  border-color: var(--border-subtle);
+}
+
+.sidebar-avatar-btn.active .client-avatar {
+  box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+/* ─── Settings Page ─────────────────────────────────────────── */
+.settings-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  max-width: 900px;
+}
+
+.settings-card {
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings-card-info {
+  grid-column: 1 / -1;
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.settings-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.settings-card-header h3 {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.settings-card-header p {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.settings-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settings-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: var(--font-size-xl);
+  flex-shrink: 0;
+}
+
+.settings-avatar-name {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-avatar-email {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-email-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-email-row input {
+  flex: 1;
+}
+
+.input-readonly {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+  cursor: default;
+}
+
+.settings-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-badge.verified {
+  background: var(--accent-success-soft);
+  color: var(--accent-success);
+}
+
+.settings-badge.unverified {
+  background: var(--accent-warning);
+  color: var(--bg-primary);
+}
+
+.settings-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-info-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+}
+
+.settings-info-label {
+  min-width: 110px;
+  color: var(--text-secondary);
+}
+
+.settings-info-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-card-info {
+    grid-column: 1;
+  }
+}

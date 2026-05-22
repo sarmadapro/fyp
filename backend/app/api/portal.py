@@ -130,6 +130,7 @@ def portal_chat(
         question=body.question,
         conversation_id=body.conversation_id,
         doc_service=doc_service,
+        client_id=current_client.id,
     )
     return result
 
@@ -153,6 +154,7 @@ async def portal_chat_stream(
                 question=body.question,
                 conversation_id=body.conversation_id,
                 doc_service=doc_service,
+                client_id=current_client.id,
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as e:

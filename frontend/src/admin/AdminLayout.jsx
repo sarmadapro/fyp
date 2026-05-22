@@ -1,14 +1,17 @@
 import {
   LayoutDashboard, Users, Key, BarChart3,
-  Shield, LogOut, ChevronRight, Mic
+  Shield, LogOut, ChevronRight, Mic,
+  MessageSquare, Activity
 } from 'lucide-react';
 import { adminLogout, getSavedAdmin } from '../api/admin';
 
 const NAV = [
-  { key: 'dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
-  { key: 'users',      label: 'Users',       icon: Users },
-  { key: 'api-keys',   label: 'Embed Keys',  icon: Key },
-  { key: 'analytics',  label: 'Analytics',   icon: BarChart3 },
+  { key: 'dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
+  { key: 'users',         label: 'Users',          icon: Users },
+  { key: 'api-keys',      label: 'Embed Keys',     icon: Key },
+  { key: 'conversations', label: 'Conversations',  icon: MessageSquare },
+  { key: 'analytics',     label: 'Analytics',      icon: BarChart3 },
+  { key: 'system',        label: 'System Health',  icon: Activity },
 ];
 
 export default function AdminLayout({ page, onNavigate, onLogout, children }) {

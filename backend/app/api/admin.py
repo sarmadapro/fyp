@@ -30,7 +30,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, field_validator
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -621,6 +621,109 @@ def list_all_api_keys(
     ]
 
     return {"keys": keys, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/conversations/by-user")
+def conversations_by_user(
+    _admin: Client = Depends(get_admin),
+    db: Session    = Depends(get_db),
+):
+    """Per-user conversation stats from the in-memory analytics store."""
+    from app.services.analytics_service import get_user_stats
+    stats = get_user_stats()
+
+    # Enrich with email and company_name from DB
+    client_ids = [s["client_id"] for s in stats if s["client_id"] != "anonymous"]
+    clients_map: dict[str, dict] = {}
+    if client_ids:
+        rows = db.query(Client.id, Client.email, Client.company_name, Client.full_name).filter(
+            Client.id.in_(client_ids)
+        ).all()
+        clients_map = {r.id: {"email": r.email, "company_name": r.company_name, "full_name": r.full_name} for r in rows}
+
+    for s in stats:
+        info = clients_map.get(s["client_id"], {})
+        s["email"]        = info.get("email", s["client_id"])
+        s["company_name"] = info.get("company_name", "")
+        s["full_name"]    = info.get("full_name", "")
+
+    return {"users": stats}
+
+
+@router.get("/conversations")
+def platform_conversations(
+    mode:      Optional[str] = Query(None, description="chat | voice"),
+    status:    Optional[str] = Query(None, description="success | error"),
+    client_id: Optional[str] = Query(None, description="Filter by client ID"),
+    limit:     int           = Query(50, ge=1, le=200),
+    offset:    int           = Query(0, ge=0),
+    _admin:    Client        = Depends(get_admin),
+):
+    """All platform conversations from the in-memory analytics store."""
+    from app.services.analytics_service import get_all_entries, get_summary
+    result  = get_all_entries(mode=mode, status=status, client_id=client_id, limit=limit, offset=offset)
+    summary = get_summary()
+    return {
+        "conversations": result["entries"],
+        "total":         result["total"],
+        "summary":       summary,
+    }
+
+
+@router.get("/system-health")
+async def system_health(
+    _admin: Client = Depends(get_admin),
+    db: Session    = Depends(get_db),
+):
+    """Check health of all platform services."""
+    import httpx
+    from app.core.config import settings as cfg
+
+    async def _ping(url: str, name: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                r = await client.get(f"{url}/health")
+                if r.status_code == 200:
+                    data = r.json()
+                    return {"name": name, "status": "ok", "detail": data}
+                return {"name": name, "status": "degraded", "detail": f"HTTP {r.status_code}"}
+        except Exception as e:
+            return {"name": name, "status": "down", "detail": str(e)}
+
+    stt_health = await _ping(cfg.STT_SERVICE_URL, "STT")
+    tts_health = await _ping(cfg.TTS_SERVICE_URL, "TTS")
+
+    # DB check
+    try:
+        db.execute(text("SELECT 1"))
+        db_health = {"name": "Database", "status": "ok", "detail": "Connected"}
+    except Exception as e:
+        db_health = {"name": "Database", "status": "down", "detail": str(e)}
+
+    # Platform summary counts
+    total_users  = db.query(func.count(Client.id)).scalar()
+    total_keys   = db.query(func.count(APIKey.id)).scalar()
+    total_calls  = db.query(func.coalesce(func.sum(APIKey.usage_count), 0)).scalar()
+
+    return {
+        "services": [
+            {"name": "Backend API",  "status": "ok", "detail": f"v3.0.0 — {cfg.LLM_PROVIDER}/{cfg.LLM_MODEL}"},
+            {"name": "LLM",          "status": "ok", "detail": f"{cfg.LLM_PROVIDER} — {cfg.LLM_MODEL}"},
+            stt_health,
+            tts_health,
+            db_health,
+        ],
+        "platform": {
+            "total_users":     total_users,
+            "total_api_keys":  total_keys,
+            "total_api_calls": int(total_calls),
+            "llm_provider":    cfg.LLM_PROVIDER,
+            "llm_model":       cfg.LLM_MODEL,
+            "embedding_model": cfg.EMBEDDING_MODEL,
+            "stt_url":         cfg.STT_SERVICE_URL,
+            "tts_url":         cfg.TTS_SERVICE_URL,
+        },
+    }
 
 
 @router.get("/analytics")

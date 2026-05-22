@@ -146,3 +146,24 @@ export async function adminListAllKeys({ search = '', activeOnly = false, page =
   const res = await adminRequest(`/admin/api-keys?${p}`);
   return res.json();
 }
+
+export async function adminGetConversations({ mode = '', status = '', clientId = '', limit = 50, offset = 0 } = {}) {
+  const p = new URLSearchParams();
+  if (mode)     p.set('mode',      mode);
+  if (status)   p.set('status',    status);
+  if (clientId) p.set('client_id', clientId);
+  p.set('limit',  limit);
+  p.set('offset', offset);
+  const res = await adminRequest(`/admin/conversations?${p}`);
+  return res.json();
+}
+
+export async function adminGetUserStats() {
+  const res = await adminRequest('/admin/conversations/by-user');
+  return res.json();
+}
+
+export async function adminGetSystemHealth() {
+  const res = await adminRequest('/admin/system-health');
+  return res.json();
+}

@@ -65,24 +65,25 @@ async function streamChat(message, sessionId, onToken, onDone, onError) {
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-const IconChat = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+const IconSparkle = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+    <path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/>
   </svg>
 );
 const IconClose = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
   </svg>
 );
 const IconSend = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13"/>
     <polygon points="22 2 15 22 11 13 2 9 22 2"/>
   </svg>
 );
 const IconMic = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
     <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
     <line x1="12" y1="19" x2="12" y2="23"/>
@@ -90,17 +91,17 @@ const IconMic = () => (
   </svg>
 );
 const IconArrowLeft = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="19" y1="12" x2="5" y2="12"/>
     <polyline points="12 19 5 12 12 5"/>
   </svg>
 );
 
 const AIAvatar = () => (
-  <div style={{ width:26, height:26, borderRadius:'50%', background:'#0a0a0a', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginBottom:2 }}>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+  <div style={{ width:32, height:32, borderRadius:'50%', background:'#0a0a0a', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginBottom:2 }}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+      <path d="M20 3v2M21 4h-2M4 19v2M5 20H3"/>
     </svg>
   </div>
 );
@@ -462,8 +463,8 @@ function VoiceRAGWidget() {
   // ── Render ────────────────────────────────────────────────────────────────
   const side = window.__VRAG_SIDE || 'right';
   const panelStyle = side==='left'
-    ? {position:'absolute', bottom:68, left:0}
-    : {position:'absolute', bottom:68, right:0};
+    ? {position:'absolute', bottom:76, left:0}
+    : {position:'absolute', bottom:76, right:0};
 
   return (
     <div style={{ position:'relative' }}>
@@ -472,7 +473,7 @@ function VoiceRAGWidget() {
       {open && (
         <div style={{
           ...panelStyle,
-          width:380, height:'min(560px, calc(100vh - 96px))',
+          width:420, height:'min(600px, calc(100vh - 96px))',
           background:'#fff', borderRadius:20,
           border:'1px solid #e2e2e2',
           boxShadow:'0 8px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
@@ -491,10 +492,10 @@ function VoiceRAGWidget() {
                 </button>
               )}
               <div>
-                <div style={{ fontWeight:600, fontSize:14, color:'#0a0a0a', letterSpacing:'-0.2px' }}>
+                <div style={{ fontWeight:600, fontSize:15.5, color:'#0a0a0a', letterSpacing:'-0.2px' }}>
                   {mode==='voice' ? 'Voice Assistant' : assistantName}
                 </div>
-                <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>Powered by VoiceRAG</div>
+                <div style={{ fontSize:12.5, color:'#aaa', marginTop:2 }}>Powered by VoiceRAG</div>
               </div>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
@@ -521,7 +522,7 @@ function VoiceRAGWidget() {
                       background: msg.role==='user' ? '#0a0a0a' : 'transparent',
                       borderRadius: msg.role==='user' ? '16px 16px 4px 16px' : 0,
                       color: msg.role==='user' ? '#fff' : '#1a1a1a',
-                      fontSize:13.5, lineHeight:1.55, fontWeight:400, letterSpacing:'-0.1px',
+                      fontSize:15, lineHeight:1.6, fontWeight:400, letterSpacing:'-0.1px',
                     }}>{msg.text}</div>
                   </div>
                 ))}
@@ -537,7 +538,7 @@ function VoiceRAGWidget() {
                 <div style={{ display:'flex', alignItems:'center', gap:8, background:'#f8f8f8', borderRadius:14, padding:'8px 8px 8px 14px', border:'1px solid #ececec' }}>
                   <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
                     placeholder="Message…"
-                    style={{ flex:1, border:'none', background:'transparent', fontSize:13.5, color:'#0a0a0a', outline:'none', fontFamily:"'DM Sans', sans-serif", letterSpacing:'-0.1px' }}
+                    style={{ flex:1, border:'none', background:'transparent', fontSize:15, color:'#0a0a0a', outline:'none', fontFamily:"'DM Sans', sans-serif", letterSpacing:'-0.1px' }}
                   />
                   <button onClick={toggleVoice}
                     style={{ width:32, height:32, borderRadius:9, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#999' }}
@@ -550,17 +551,17 @@ function VoiceRAGWidget() {
                     <IconSend />
                   </button>
                 </div>
-                <div style={{ textAlign:'center', marginTop:8, fontSize:10.5, color:'#ccc', letterSpacing:'0.2px' }}>Powered by VoiceRAG</div>
+                <div style={{ textAlign:'center', marginTop:8, fontSize:12, color:'#ccc', letterSpacing:'0.2px' }}>Powered by VoiceRAG</div>
               </div>
             </>
           ) : (
             <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:32, padding:'32px 24px' }}>
-              <div style={{ fontSize:13, color:'#999', letterSpacing:'0.3px' }}>{voiceStatus}</div>
+              <div style={{ fontSize:15, color:'#999', letterSpacing:'0.3px' }}>{voiceStatus}</div>
               <div style={{ height:48, display:'flex', alignItems:'center', opacity:waveActive?1:0.3, transition:'opacity 0.4s' }}>
                 <WaveformBars active={waveActive} />
               </div>
               <PulseRing listening={isListening} onClick={()=>{ if(vr.playing||vr.ttsActive) interruptPlayback(); }} />
-              <div style={{ fontSize:11, color:'#ccc', letterSpacing:'0.2px', marginTop:'auto' }}>Powered by VoiceRAG</div>
+              <div style={{ fontSize:12.5, color:'#ccc', letterSpacing:'0.2px', marginTop:'auto' }}>Powered by VoiceRAG</div>
             </div>
           )}
         </div>
@@ -568,11 +569,11 @@ function VoiceRAGWidget() {
 
       {/* Launcher button */}
       <button onClick={()=>open?handleClose():setOpen(true)}
-        style={{ width:52, height:52, borderRadius:'50%', background:'#0a0a0a', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', boxShadow:'0 4px 20px rgba(0,0,0,0.22)', transition:'transform 0.2s ease, box-shadow 0.2s ease', animation:'vr-launcher-pop 0.5s cubic-bezier(0.34,1.26,0.64,1) 0.3s both' }}
+        style={{ width:60, height:60, borderRadius:'50%', background:'#0a0a0a', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', boxShadow:'0 4px 20px rgba(0,0,0,0.22)', transition:'transform 0.2s ease, box-shadow 0.2s ease', animation:'vr-launcher-pop 0.5s cubic-bezier(0.34,1.26,0.64,1) 0.3s both' }}
         onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.07)';e.currentTarget.style.boxShadow='0 6px 28px rgba(0,0,0,0.28)';}}
         onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow='0 4px 20px rgba(0,0,0,0.22)';}}>
         <div style={{ transition:'transform 0.25s ease', transform:open?'rotate(90deg)':'rotate(0deg)' }}>
-          {open ? <IconClose /> : <IconChat />}
+          {open ? <IconClose /> : <IconSparkle />}
         </div>
       </button>
 

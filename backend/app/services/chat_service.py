@@ -128,6 +128,15 @@ def _get_llm() -> ChatOpenAI:
     """Main answer LLM. Uses provider resolved at startup."""
     provider = settings.LLM_PROVIDER
 
+    if provider == "openai":
+        logger.debug(f"LLM: OpenAI ({settings.LLM_MODEL})")
+        return ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.LLM_MODEL,
+            temperature=settings.LLM_TEMPERATURE,
+            max_tokens=settings.LLM_MAX_TOKENS,
+        )
+
     if provider == "groq":
         logger.debug(f"LLM: Groq ({settings.LLM_MODEL})")
         return ChatOpenAI(
@@ -278,13 +287,13 @@ def _build_prompt(with_context: bool, mode: str = "chat") -> ChatPromptTemplate:
 
 # ─── Main chat (sync) ─────────────────────────────────────────────────
 
-def chat(question: str, conversation_id: str | None = None, doc_service=None, mode: str = "chat") -> dict:
+def chat(question: str, conversation_id: str | None = None, doc_service=None, mode: str = "chat", client_id: str = "") -> dict:
     """Process a chat question through the RAG pipeline."""
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
     _doc = doc_service or document_service
-    trace_id = start_trace(conversation_id, mode="chat", user_query=question)
+    trace_id = start_trace(conversation_id, mode="chat", user_query=question, client_id=client_id)
 
     # 1. Query rewriting — turn follow-ups into standalone questions
     raw_history = conversation_store.get_raw(conversation_id)
@@ -344,13 +353,13 @@ def chat(question: str, conversation_id: str | None = None, doc_service=None, mo
 
 # ─── Main chat (streaming) ────────────────────────────────────────────
 
-async def chat_stream(question: str, conversation_id: str | None = None, doc_service=None, mode: str = "chat"):
+async def chat_stream(question: str, conversation_id: str | None = None, doc_service=None, mode: str = "chat", client_id: str = ""):
     """Streaming RAG pipeline. Yields SSE-compatible dicts."""
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
 
     _doc = doc_service or document_service
-    trace_id = start_trace(conversation_id, mode="chat", user_query=question)
+    trace_id = start_trace(conversation_id, mode="chat", user_query=question, client_id=client_id)
 
     try:
         # 1. Query rewriting

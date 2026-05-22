@@ -37,6 +37,7 @@ class ConversationEntry:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     conversation_id: str = ""
+    client_id: str = ""
     mode: str = "chat"                                  # "chat" | "voice"
     user_query: str = ""
     ai_response: str = ""
@@ -57,11 +58,12 @@ _entries: list[ConversationEntry] = []
 _active_traces: dict[str, dict] = {}  # trace_id -> timing context
 
 
-def start_trace(conversation_id: str, mode: str, user_query: str) -> str:
+def start_trace(conversation_id: str, mode: str, user_query: str, client_id: str = "") -> str:
     """Begin timing a pipeline execution. Returns a trace_id."""
     trace_id = str(uuid.uuid4())
     _active_traces[trace_id] = {
         "conversation_id": conversation_id,
+        "client_id": client_id,
         "mode": mode,
         "user_query": user_query,
         "start_time": time.perf_counter(),
@@ -138,6 +140,7 @@ def finish_trace(trace_id: str, ai_response: str = "") -> Optional[ConversationE
 
     entry = ConversationEntry(
         conversation_id=trace["conversation_id"],
+        client_id=trace.get("client_id", ""),
         mode=trace["mode"],
         user_query=trace["user_query"],
         ai_response=ai_response,
@@ -161,6 +164,7 @@ def finish_trace(trace_id: str, ai_response: str = "") -> Optional[ConversationE
 def get_all_entries(
     mode: Optional[str] = None,
     status: Optional[str] = None,
+    client_id: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
@@ -171,6 +175,8 @@ def get_all_entries(
         filtered = [e for e in filtered if e.mode == mode]
     if status:
         filtered = [e for e in filtered if e.status == status]
+    if client_id:
+        filtered = [e for e in filtered if e.client_id == client_id]
 
     total = len(filtered)
     page = filtered[offset:offset + limit]
@@ -225,6 +231,52 @@ def get_summary() -> dict:
         "avg_retrieval_ms": _avg(retrieval_latencies),
         "avg_time_to_first_word_ms": _avg(ttfw_latencies),
     }
+
+
+def get_user_stats() -> list[dict]:
+    """Return per-client conversation stats, sorted by conversation count desc."""
+    from collections import defaultdict
+    stats: dict[str, dict] = defaultdict(lambda: {
+        "client_id": "",
+        "total": 0,
+        "errors": 0,
+        "chat_count": 0,
+        "voice_count": 0,
+        "latencies": [],
+        "last_seen": "",
+    })
+
+    for entry in _entries:
+        uid = entry.client_id or "anonymous"
+        s = stats[uid]
+        s["client_id"] = uid
+        s["total"] += 1
+        if entry.status == "error":
+            s["errors"] += 1
+        if entry.mode == "voice":
+            s["voice_count"] += 1
+        else:
+            s["chat_count"] += 1
+        if entry.latency.total_round_trip_ms is not None:
+            s["latencies"].append(entry.latency.total_round_trip_ms)
+        if not s["last_seen"] or entry.timestamp > s["last_seen"]:
+            s["last_seen"] = entry.timestamp
+
+    result = []
+    for uid, s in stats.items():
+        lats = s["latencies"]
+        result.append({
+            "client_id": uid,
+            "total_conversations": s["total"],
+            "error_count": s["errors"],
+            "chat_count": s["chat_count"],
+            "voice_count": s["voice_count"],
+            "avg_latency_ms": round(sum(lats) / len(lats), 2) if lats else 0,
+            "last_seen": s["last_seen"],
+        })
+
+    result.sort(key=lambda x: x["total_conversations"], reverse=True)
+    return result
 
 
 def clear_analytics():

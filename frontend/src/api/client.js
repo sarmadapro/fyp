@@ -155,6 +155,22 @@ export async function getProfile() {
   return res.json();
 }
 
+export async function updateProfile(fullName, companyName) {
+  const res = await request('/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ full_name: fullName, company_name: companyName }),
+  });
+  return res.json();
+}
+
+export async function changePassword(currentPassword, newPassword) {
+  const res = await request('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  return res.json();
+}
+
 export function getSavedClient() {
   try {
     return JSON.parse(localStorage.getItem('voicerag_client'));

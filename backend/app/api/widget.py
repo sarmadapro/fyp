@@ -107,6 +107,7 @@ def widget_chat(
         question=req.message,
         conversation_id=session_id,
         doc_service=doc_service,
+        client_id=client_id,
     )
 
     return WidgetChatResponse(
@@ -132,6 +133,7 @@ async def widget_chat_stream(
                 question=req.message,
                 conversation_id=session_id,
                 doc_service=doc_service,
+                client_id=client_id,
             ):
                 yield f"data: {_json.dumps(chunk)}\n\n"
         except Exception as e:
@@ -180,6 +182,7 @@ async def widget_voice(
         question=transcription,
         conversation_id=session_id,
         doc_service=doc_service,
+        client_id=client_id,
     )
     answer = result["answer"]
 

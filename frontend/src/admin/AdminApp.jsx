@@ -7,12 +7,16 @@ import AdminDashboard from './AdminDashboard';
 import AdminUsersPage from './AdminUsersPage';
 import AdminAPIKeysPage from './AdminAPIKeysPage';
 import AdminAnalyticsPage from './AdminAnalyticsPage';
+import AdminConversationsPage from './AdminConversationsPage';
+import AdminSystemPage from './AdminSystemPage';
 
 const PAGES = {
-  dashboard: AdminDashboard,
-  users:     AdminUsersPage,
-  'api-keys': AdminAPIKeysPage,
-  analytics: AdminAnalyticsPage,
+  dashboard:     AdminDashboard,
+  users:         AdminUsersPage,
+  'api-keys':    AdminAPIKeysPage,
+  conversations: AdminConversationsPage,
+  analytics:     AdminAnalyticsPage,
+  system:        AdminSystemPage,
 };
 
 export default function AdminApp({ onExitAdmin }) {

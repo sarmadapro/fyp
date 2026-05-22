@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx @remotion/cli skills add)",
+      "Bash(npx tsc *)",
+      "Bash(npx remotion *)",
+      "Bash(Remove-Item -Recurse -Force -ErrorAction SilentlyContinue \".remotion\")"
+    ]
+  }
+}

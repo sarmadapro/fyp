@@ -121,6 +121,45 @@ async def health_check():
 
 # ─── Startup ──────────────────────────────────────────────────────────
 
+def _seed_admin():
+    """Ensure the default admin account exists."""
+    from app.core.database import SessionLocal
+    from app.models.database import Client, APIKey
+    from app.services.auth_service import hash_password, get_client_by_email
+
+    ADMIN_EMAIL    = "sarmadapro@gmail.com"
+    ADMIN_PASSWORD = "11111111"
+
+    db = SessionLocal()
+    try:
+        client = get_client_by_email(db, ADMIN_EMAIL)
+        if not client:
+            client = Client(
+                email=ADMIN_EMAIL,
+                hashed_password=hash_password(ADMIN_PASSWORD),
+                company_name="VoiceRAG Admin",
+                full_name="Sarmad",
+                is_active=True,
+                is_email_verified=True,
+                is_admin=True,
+            )
+            db.add(client)
+            db.flush()
+            full_key, prefix, key_hash = APIKey.generate_key()
+            db.add(APIKey(client_id=client.id, name="Admin Key", key_prefix=prefix, key_hash=key_hash))
+            db.commit()
+            logger.info(f"[Seed] Admin account created: {ADMIN_EMAIL}")
+        elif not client.is_admin:
+            client.is_admin = True
+            client.is_email_verified = True
+            db.commit()
+            logger.info(f"[Seed] Admin flag granted to existing account: {ADMIN_EMAIL}")
+        else:
+            logger.info(f"[Seed] Admin account already exists: {ADMIN_EMAIL}")
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 async def startup_event():
     init_db()
@@ -130,6 +169,8 @@ async def startup_event():
         migrate_admin.run()
     except Exception as e:
         logger.warning(f"Admin migration skipped: {e}")
+
+    _seed_admin()
 
     logger.info("=" * 60)
     logger.info("VoiceRAG SaaS Platform v3.0 — Starting")

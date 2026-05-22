@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Upload, MessageCircle, Mic, FileText, BarChart3, Key,
-  LogOut, LayoutDashboard
+  LogOut, Settings
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
@@ -18,6 +18,7 @@ import ChatPage from './pages/ChatPage';
 import VoicePage from './pages/VoicePage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import APIKeysPage from './pages/APIKeysPage';
+import SettingsPage from './pages/SettingsPage';
 
 // Admin Panel
 import AdminApp from './admin/AdminApp';
@@ -36,6 +37,7 @@ const PORTAL_PAGES = {
   voice: { label: 'Voice', icon: Mic, component: VoicePage },
   apikeys: { label: 'API Keys', icon: Key, component: APIKeysPage },
   analytics: { label: 'Analytics', icon: BarChart3, component: AnalyticsPage },
+  settings: { label: 'Settings', icon: Settings, component: SettingsPage },
 };
 
 export default function App() {
@@ -190,13 +192,17 @@ export default function App() {
             })}
           </nav>
 
-          {/* Client Info */}
+          {/* Client Info — click to open Settings */}
           {client && (
-            <div className="sidebar-client" title={client.email} style={{ marginTop: 'auto', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
-              <div className="client-avatar" style={{ margin: 0 }}>
+            <button
+              className={`sidebar-avatar-btn ${activePortalPage === 'settings' ? 'active' : ''}`}
+              onClick={() => setActivePortalPage('settings')}
+              title={`${client.email} — Settings`}
+            >
+              <div className="client-avatar">
                 {(client.company_name || client.email || '?')[0].toUpperCase()}
               </div>
-            </div>
+            </button>
           )}
 
           {/* Document Status Collapsed */}
