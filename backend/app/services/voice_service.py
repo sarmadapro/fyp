@@ -13,11 +13,20 @@ import wave
 
 import httpx
 from fastapi import WebSocket
+from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.chat_service import chat, chat_stream
 from app.services.document_service import ClientDocumentService
 from app.services.analytics_service import start_trace, mark, record_error, finish_trace, set_audio_duration
+
+_openai_client: AsyncOpenAI | None = None
+
+def _get_openai_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    return _openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +57,11 @@ def _get_http_client() -> httpx.AsyncClient:
 # ---------------------------------------------------------------------------
 
 async def check_stt_health() -> bool:
-    """Check if the STT microservice is reachable."""
-    try:
-        client = _get_http_client()
-        resp = await client.get(f"{settings.STT_SERVICE_URL}/health", timeout=10.0)
-        return resp.status_code == 200
-    except Exception as e:
-        logger.warning(f"STT health check failed: {e}")
-        return False
+    """STT is healthy when the OpenAI API key is configured."""
+    ok = bool(settings.OPENAI_API_KEY)
+    if not ok:
+        logger.warning("STT health check failed: OPENAI_API_KEY not set")
+    return ok
 
 
 async def check_tts_health() -> bool:
@@ -79,38 +85,40 @@ async def transcribe_audio(
     language: str | None = None,
 ) -> dict:
     """
-    Send audio to the STT microservice for transcription.
-    `language` pins Whisper to a specific language (e.g. "en", "hi", "ur").
-    Pass None or "auto" to let Whisper auto-detect.
+    Transcribe audio directly via OpenAI Whisper API (no microservice hop).
     Returns: {"text": str, "language": str, "duration": float}
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "wav"
     content_types = {
-        "wav": "audio/wav",
+        "wav":  "audio/wav",
         "webm": "audio/webm",
-        "mp3": "audio/mpeg",
-        "ogg": "audio/ogg",
+        "mp3":  "audio/mpeg",
+        "ogg":  "audio/ogg",
         "flac": "audio/flac",
+        "m4a":  "audio/mp4",
     }
-    content_type = content_types.get(ext, "audio/wav")
+    content_type = content_types.get(ext, "audio/webm")
 
-    logger.info(f"[STT] Sending {len(audio_bytes)} bytes as {filename} ({content_type}), lang={language or 'auto'}")
+    forced_lang = (language or "").strip().lower()
+    if not forced_lang or forced_lang == "auto":
+        forced_lang = "en"
 
-    client = _get_http_client()
-    files = {"file": (filename, audio_bytes, content_type)}
-    data = {}
-    if language and language != "auto":
-        data["language"] = language
+    logger.info(f"[STT] OpenAI Whisper: {len(audio_bytes)} bytes, file={filename}, lang={forced_lang}")
+    start = time.time()
 
-    response = await client.post(
-        f"{settings.STT_SERVICE_URL}/transcribe",
-        files=files,
-        data=data,
+    client = _get_openai_client()
+    response = await client.audio.transcriptions.create(
+        model="whisper-1",
+        file=(filename, audio_bytes, content_type),
+        response_format="json",
+        language=forced_lang,
     )
-    response.raise_for_status()
-    result = response.json()
-    logger.info(f"[STT] Result: text='{result.get('text', '')[:80]}', lang={result.get('language')}")
-    return result
+
+    text = (response.text or "").strip()
+    elapsed = round(time.time() - start, 2)
+    logger.info(f"[STT] Done in {elapsed}s: '{text[:80]}'")
+
+    return {"text": text, "language": forced_lang, "duration": elapsed, "audio_duration_s": elapsed}
 
 
 async def synthesize_speech(text: str, voice: str = "af_sky", language: str = "en") -> bytes:

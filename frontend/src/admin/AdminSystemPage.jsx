@@ -25,6 +25,11 @@ function ServiceCard({ service }) {
   const Icon   = SERVICE_ICONS[service.name] || Server;
   const Status = cfg.icon;
 
+  // detail can be a string or a dict from the health endpoint — always stringify
+  const detail = service.detail
+    ? (typeof service.detail === 'object' ? JSON.stringify(service.detail) : service.detail)
+    : '—';
+
   return (
     <div className="admin-service-card" style={{ borderColor: `${cfg.color}33` }}>
       <div className="admin-service-icon" style={{ background: cfg.bg, color: cfg.color }}>
@@ -32,7 +37,7 @@ function ServiceCard({ service }) {
       </div>
       <div className="admin-service-body">
         <div className="admin-service-name">{service.name}</div>
-        <div className="admin-service-detail">{service.detail || '—'}</div>
+        <div className="admin-service-detail">{detail}</div>
       </div>
       <div className="admin-service-status" style={{ color: cfg.color }}>
         <Status size={16} />

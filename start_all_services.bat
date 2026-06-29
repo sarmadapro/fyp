@@ -1,48 +1,53 @@
 @echo off
-REM Voice-to-Voice RAG AI Agent - Start All Services
-REM This script starts all 4 services in separate windows
-
 echo ========================================
-echo Voice-to-Voice RAG AI Agent
-echo Starting All Services...
+echo  VocalizeWeb - Starting All Services
 echo ========================================
 echo.
 
-REM Check if .env exists
-if not exist .env (
-    echo ERROR: .env file not found!
-    echo Please copy .env.example to .env and add your GROQ_API_KEY
-    pause
-    exit /b 1
+REM ── Kill anything already on these ports ──────────────────────────
+echo Clearing ports 8000 8002 5173 3000...
+for %%P in (8000 8002 5173 3000) do (
+    for /f "tokens=5" %%i in ('netstat -aon ^| findstr ":%%P " ^| findstr "LISTENING"') do (
+        taskkill /PID %%i /F >nul 2>&1
+    )
 )
+timeout /t 1 /nobreak >nul
 
+REM ── Run DB migrations ─────────────────────────────────────────────
 echo Running database migrations...
-cd backend && venv\Scripts\python.exe migrate_db.py && cd ..
+cd backend && venv\Scripts\python.exe migrate_db.py
+cd ..
 echo.
 
-echo Starting Backend Service (Port 8000)...
-start "Backend - Port 8000" cmd /k "cd backend && venv\Scripts\activate && python main.py"
+REM ── Backend — Port 8000 ───────────────────────────────────────────
+echo Starting Backend (port 8000)...
+start "Backend :8000" cmd /k "cd /d %~dp0backend && venv\Scripts\activate && python main.py"
+timeout /t 3 /nobreak >nul
+
+REM ── TTS — Port 8002 ───────────────────────────────────────────────
+echo Starting TTS service (port 8002)...
+start "TTS :8002" cmd /k "cd /d %~dp0services\tts && venv\Scripts\activate && python main.py"
 timeout /t 2 /nobreak >nul
 
-echo Starting STT Service (Port 8001)...
-start "STT Service - Port 8001" cmd /k "cd services\stt && venv\Scripts\activate && python main.py"
+REM ── VocalizeWeb Frontend — Port 5173 ─────────────────────────────
+echo Starting VocalizeWeb frontend (port 5173)...
+start "Frontend :5173" cmd /k "cd /d %~dp0frontend && npm run dev"
 timeout /t 2 /nobreak >nul
 
-echo Starting TTS Service (Port 8002)...
-start "TTS Service - Port 8002" cmd /k "cd services\tts && venv\Scripts\activate && python main.py"
-timeout /t 2 /nobreak >nul
-
-echo Starting Frontend (Port 5173)...
-start "Frontend - Port 5173" cmd /k "cd frontend && npm run dev"
+REM ── Namal Demo Site — Port 3000 ──────────────────────────────────
+echo Starting Namal demo site (port 3000)...
+start "Namal :3000" cmd /k "cd /d %~dp0Namal_-frontend && npm start"
 
 echo.
 echo ========================================
-echo All services are starting!
+echo  All 4 services launching in windows:
+echo    Backend    -^> http://localhost:8000
+echo    TTS        -^> http://localhost:8002
+echo    Portal     -^> http://localhost:5173
+echo    Namal Demo -^> http://localhost:3000
+echo.
+echo  STT: OpenAI Whisper API (direct, no microservice)
+echo  To stop everything: run stop_all_services.bat
 echo ========================================
-echo.
-echo Wait 10-15 seconds for all services to initialize...
-echo Then open: http://localhost:5173
-echo.
-echo To stop all services, close all the terminal windows.
 echo.
 pause

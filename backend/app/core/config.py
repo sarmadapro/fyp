@@ -39,7 +39,7 @@ class Settings:
     ).split(",")
 
     # --- LLM Configuration ---
-    # Priority: OpenAI → DeepSeek → Groq → Ollama
+    
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -98,9 +98,9 @@ class Settings:
         self.CLIENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         # Resolve LLM provider with priority:
-        # 1. OpenAI (if OPENAI_API_KEY present)
-        # 2. DeepSeek (if DEEPSEEK_API_KEY present)
-        # 3. Groq (if GROQ_API_KEY present) — fast fallback
+        # 1. Groq (if GROQ_API_KEY present) — fastest, LPU hardware <500ms
+        # 2. OpenAI (if OPENAI_API_KEY present)
+        # 3. DeepSeek (if DEEPSEEK_API_KEY present)
         # 4. Ollama (default) — local offline fallback
         _openai_key_valid = (
             bool(self.OPENAI_API_KEY)
@@ -115,7 +115,11 @@ class Settings:
             and self.GROQ_API_KEY not in ("your_groq_api_key_here", "")
         )
 
-        if _openai_key_valid:
+        if _groq_key_valid:
+            self.LLM_PROVIDER = "groq"
+            self.LLM_MODEL = self.GROQ_MODEL
+            print(f"[CONFIG] LLM: Groq ({self.GROQ_MODEL}) — key detected")
+        elif _openai_key_valid:
             self.LLM_PROVIDER = "openai"
             self.LLM_MODEL = self.OPENAI_MODEL
             print(f"[CONFIG] LLM: OpenAI ({self.OPENAI_MODEL}) — key detected")
@@ -123,10 +127,6 @@ class Settings:
             self.LLM_PROVIDER = "deepseek"
             self.LLM_MODEL = self.DEEPSEEK_MODEL
             print(f"[CONFIG] LLM: DeepSeek ({self.DEEPSEEK_MODEL}) — key detected")
-        elif _groq_key_valid:
-            self.LLM_PROVIDER = "groq"
-            self.LLM_MODEL = self.GROQ_MODEL
-            print(f"[CONFIG] LLM: Groq ({self.GROQ_MODEL}) — DeepSeek key missing, using Groq fallback")
         else:
             self.LLM_PROVIDER = "ollama"
             self.LLM_MODEL = self.OLLAMA_MODEL

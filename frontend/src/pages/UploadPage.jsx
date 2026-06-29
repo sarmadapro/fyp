@@ -67,14 +67,34 @@ export default function UploadPage() {
     }
   };
 
+  const onDropRejected = useCallback((rejectedFiles) => {
+    const file = rejectedFiles[0];
+    if (!file) return;
+    const ext = file.file.name.includes('.')
+      ? '.' + file.file.name.split('.').pop().toLowerCase()
+      : '';
+    const reason = file.errors?.[0]?.code;
+    if (reason === 'file-too-large') {
+      toast.error(`File too large. Maximum size is 50 MB.`);
+    } else {
+      toast.error(
+        ext
+          ? `"${ext}" files are not supported. Please upload a PDF, DOCX, or TXT file.`
+          : 'Unsupported file type. Please upload a PDF, DOCX, or TXT file.'
+      );
+    }
+  }, []);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       'text/plain': ['.txt'],
     },
     maxFiles: 1,
+    maxSize: 50 * 1024 * 1024,
     disabled: uploading,
   });
 

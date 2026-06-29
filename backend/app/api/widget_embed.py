@@ -21,6 +21,10 @@ router = APIRouter(tags=["Widget Embed"])
 _WIDGET_JSX = r"""
 const { useState, useRef, useEffect, useCallback } = React;
 
+// ── Monotonic message ID — prevents collisions when messages are added quickly ─
+let _nid = 1;
+const _id = () => ++_nid;
+
 // ── Config (injected by loader) ───────────────────────────────────────────────
 const API_KEY = window.__VRAG_API_KEY;
 const API_URL = window.__VRAG_API_URL;
@@ -235,9 +239,8 @@ function VoiceRAGWidget() {
     const txt = input.trim();
     if (!txt) return;
     setInput('');
-    setMessages(m => [...m, {id:Date.now(), role:'user', text:txt}]);
-    const msgId = Date.now()+1;
-    setMessages(m => [...m, {id:msgId, role:'ai', text:''}]);
+    const msgId = _id();
+    setMessages(m => [...m, {id:_id(), role:'user', text:txt}, {id:msgId, role:'ai', text:''}]);
     setTyping(true);
     let reply = '';
     await streamChat(
@@ -384,21 +387,21 @@ function VoiceRAGWidget() {
         }
         case 'transcription':
           if(msg.conversation_id) sessionRef.current=msg.conversation_id;
-          setMessages(m=>[...m,{id:Date.now(),role:'user',text:msg.text}]);
+          setMessages(m=>[...m,{id:_id(),role:'user',text:msg.text}]);
           setWaveActive(false); setVoiceStatus('Thinking…');
           break;
         case 'answer':
           setMessages(m=>{
             const last=m[m.length-1];
             if(last&&last.role==='ai'&&last._voice) return [...m.slice(0,-1),{...last,text:msg.text}];
-            return [...m,{id:Date.now(),role:'ai',text:msg.text,_voice:true}];
+            return [...m,{id:_id(),role:'ai',text:msg.text,_voice:true}];
           });
           break;
         case 'audio_chunk':
           if(vr.acceptAudio) enqueueAudio(msg.data);
           break;
         case 'error':
-          setMessages(m=>[...m,{id:Date.now(),role:'ai',text:'⚠ '+(msg.message||'Voice error.')}]);
+          setMessages(m=>[...m,{id:_id(),role:'ai',text:'⚠ '+(msg.message||'Voice error.')}]);
           setVoiceStatus('Error — try again');
           break;
       }
@@ -436,7 +439,7 @@ function VoiceRAGWidget() {
       setIsListening(true); setVoiceStatus('Listening…');
     } catch(e) {
       console.error('[VoiceRAG] VAD init failed:', e);
-      setMessages(m=>[...m,{id:Date.now(),role:'ai',text:'⚠ Voice AI failed to load. Try again.'}]);
+      setMessages(m=>[...m,{id:_id(),role:'ai',text:'⚠ Voice AI failed to load. Try again.'}]);
       stopVoice();
     }
   }, []);

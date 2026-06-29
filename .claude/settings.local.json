@@ -44,7 +44,19 @@
       "Bash(Format-Table -AutoSize)",
       "Bash(grep -E \"\\\\.md$|\\\\.txt$\")",
       "Read(//mnt/c/Users/USER/Documents/fyp/**)",
-      "Bash(./venv/Scripts/python.exe -c ' *)"
+      "Bash(./venv/Scripts/python.exe -c ' *)",
+      "Bash(Test-Path \"c:\\\\Users\\\\USER\\\\Documents\\\\fyp\\\\handout.html\")",
+      "PowerShell(Start-Process \"c:\\\\Users\\\\USER\\\\Documents\\\\fyp\\\\handout.html\")",
+      "Bash(python -c \"from backend.app.api.widget_embed import WIDGET_JS; print\\('OK, JS length:', len\\(WIDGET_JS\\)\\)\")",
+      "mcp__claude_ai_Adobe_for_creativity__create_visual_design_express_skill",
+      "mcp__claude_ai_Adobe_for_creativity__adobe_mandatory_init",
+      "Bash(powershell -Command \"Compress-Archive -Path 'FYP_Report/*' -DestinationPath 'FYP_Report.zip' -Force\")",
+      "Bash(curl -s -X POST \"http://localhost:8000/widget/chat/stream\" -H \"Content-Type: application/json\" -H \"X-API-Key: vrag_1bed96b01430d58cfc4245ea1b0c2292eeee4aad0cb9cb25\" -d \"{\\\\\"message\\\\\": \\\\\"hello\\\\\", \\\\\"session_id\\\\\": null}\" --max-time 5)",
+      "Bash(curl -v -X POST \"http://localhost:8000/widget/chat/stream\" -H \"Content-Type: application/json\" -H \"X-API-Key: vrag_1bed96b01430d58cfc4245ea1b0c2292eeee4aad0cb9cb25\" -d \"{\\\\\"message\\\\\": \\\\\"hello\\\\\"}\" --max-time 5)",
+      "Bash(\"c:/Users/USER/Documents/fyp/services/stt/venv/Scripts/python.exe\" -c \"import openai; print\\(openai.__version__\\)\")",
+      "Bash(\"c:/Users/USER/Documents/fyp/services/stt/venv/Scripts/pip.exe\" install *)",
+      "Bash(\"c:/Users/USER/Documents/fyp/services/stt/venv/Scripts/python.exe\" -c \"import openai; print\\('openai', openai.__version__\\)\")",
+      "Bash(\"c:/Users/USER/Documents/fyp/backend/venv/Scripts/python.exe\" -c \"import openai; print\\('openai', openai.__version__\\)\")"
     ]
   }
 }

@@ -46,7 +46,7 @@ Standalone question:"""
 
 def _looks_like_followup(question: str) -> bool:
     q = question.strip().lower()
-    if len(q.split()) < 6:
+    if len(q.split()) < 4:
         return True
     return any(tok in q.split() for tok in _REFERENTIAL_TOKENS)
 

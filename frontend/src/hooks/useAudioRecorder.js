@@ -19,8 +19,8 @@ export function useAudioRecorder() {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          channelCount: 1,
-          sampleRate: 16000,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 16000 },
         },
       });
 

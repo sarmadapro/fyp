@@ -217,8 +217,7 @@ def platform_stats(
     total_calls = db.query(func.coalesce(func.sum(APIKey.usage_count), 0)).scalar()
 
     # Count clients that have a document indexed
-    from pathlib import Path as P
-    data_dir = P("data/clients")
+    data_dir = settings.CLIENT_DATA_DIR
     docs_count = 0
     if data_dir.exists():
         for cdir in data_dir.iterdir():
@@ -685,8 +684,12 @@ async def system_health(
                 r = await client.get(f"{url}/health")
                 if r.status_code == 200:
                     data = r.json()
-                    return {"name": name, "status": "ok", "detail": data}
+                    # Flatten dict to a readable string so the UI can render it
+                    detail = data.get("model") or data.get("status") or "OK"
+                    return {"name": name, "status": "ok", "detail": str(detail)}
                 return {"name": name, "status": "degraded", "detail": f"HTTP {r.status_code}"}
+        except httpx.ConnectError:
+            return {"name": name, "status": "down", "detail": f"Cannot reach {url} — is the service running?"}
         except Exception as e:
             return {"name": name, "status": "down", "detail": str(e)}
 
@@ -694,11 +697,14 @@ async def system_health(
     tts_health = await _ping(cfg.TTS_SERVICE_URL, "TTS")
 
     # DB check
+    from app.core.database import DATABASE_URL as _db_url
+    _db_type = "PostgreSQL" if "postgresql" in _db_url else "SQLite"
+    _db_label = _db_url[:40].split("@")[-1] if "postgresql" in _db_url else _db_url.split("///")[-1]
     try:
         db.execute(text("SELECT 1"))
-        db_health = {"name": "Database", "status": "ok", "detail": "Connected"}
+        db_health = {"name": "Database", "status": "ok", "detail": f"{_db_type} — {_db_label}"}
     except Exception as e:
-        db_health = {"name": "Database", "status": "down", "detail": str(e)}
+        db_health = {"name": "Database", "status": "down", "detail": f"{_db_type} — {str(e)[:120]}"}
 
     # Platform summary counts
     total_users  = db.query(func.count(Client.id)).scalar()

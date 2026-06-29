@@ -5,7 +5,7 @@ Design philosophy (updated):
 - ANSWER ONLY FROM CONTEXT. If the retrieved context doesn't cover the
   question, say so plainly — never hallucinate from parametric memory.
 - A score gate runs BEFORE the LLM. If no chunk is relevant, we skip
-  the LLM entirely and return a clean "I don't have that" reply.
+  the LLM entirely and return a clean "sorry I don't have that information can you search something relevant" reply.
 - A cross-encoder reranks FAISS candidates for precision.
 - Short / referential follow-ups are rewritten by the LLM into
   standalone questions before retrieval.
@@ -33,10 +33,10 @@ logger = logging.getLogger(__name__)
 
 # How many candidates FAISS returns before reranking. Higher = better
 # recall, more reranker work. 20 is a good middle ground.
-RETRIEVE_CANDIDATES = 40  # raised for parent-child: more children searched before dedup by parent
+RETRIEVE_CANDIDATES = 25
 
 # How many chunks survive rerank and get sent to the LLM.
-FINAL_CHUNKS = 5
+FINAL_CHUNKS = 8
 
 # Rerank score below this => we treat the corpus as not covering the
 # question. Tune by running on a small eval set. BGE reranker scores
@@ -51,15 +51,16 @@ MAX_L2_DISTANCE = 1.5
 
 # Chat mode — markdown and structured formatting encouraged
 CHAT_RAG_SYSTEM_PROMPT = """\
-You are a sharp, knowledgeable assistant. Answer using ONLY the CONTEXT block below.
+You are a knowledgeable assistant for this organization. Answer using ONLY the CONTEXT block below.
 
 GROUNDING RULES — ABSOLUTE:
-- Answer ONLY from the context. If the answer is not there, say so plainly: \
-"I don't have that information." Never guess, invent, or fill from general knowledge.
-- If context partially covers the question, answer only the supported part.
+- Answer ONLY from the context. Never guess or fill from general knowledge.
+- If the context partially covers the question, answer fully for what is covered, \
+then say naturally: "I have that for [covered parts] but don't have details on [missing parts] — \
+could you ask about a specific department or topic?"
+- If the context covers nothing relevant, say briefly: "I don't have that information in my knowledge base."
+- Never say "the document", "the context", "based on the provided text", or blame missing files.
 - Never contradict the context or add claims beyond it.
-- Do not expose internals — never say "the document", "the context", "based on the \
-provided text", or blame missing files.
 
 FORMATTING RULES:
 - Use markdown where it improves clarity: **bold** for key terms, bullet lists for \
@@ -67,7 +68,7 @@ multiple items or steps, numbered lists for sequences, headings for long structu
 - Match depth to the question: simple question → 1-2 sentences. \
 Technical/multi-part question → structured detail with bullets or headings.
 - No filler phrases like "Great question!" or "Certainly!". Get straight to the answer.
-- For greetings, respond briefly and naturally without lecturing about capabilities.
+- For greetings, respond briefly and naturally.
 - Use conversation history to understand follow-ups like "tell me more" or "why?".
 
 CONTEXT:
@@ -105,16 +106,17 @@ DOMAIN:
 # No-context fallback — used when score gate finds nothing relevant.
 # Chat and voice share this since it's always short.
 NO_CONTEXT_SYSTEM_PROMPT = """\
-You are a friendly assistant. You do NOT have relevant information for this question.
+You are a friendly assistant for this organization. You do not have relevant information for this question.
 
 - Greetings → reply briefly and naturally.
 - Small talk → one casual sentence.
-- Real question → "I don't have that information, sorry." Keep it short and human.
+- Real question → Politely say you don't have that specific information and suggest \
+they try rephrasing or ask about a specific aspect (e.g. a specific department, program, or person).
 
 RULES:
 - Never guess or invent facts.
 - No markdown. Plain sentences only.
-- One to two sentences maximum.
+- Two sentences maximum. Be warm, not robotic.
 - Never mention documents, context, sources, uploads, or internal machinery.
 
 DOMAIN:

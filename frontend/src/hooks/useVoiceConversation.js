@@ -150,16 +150,33 @@ export function useVoiceConversation() {
 
   const ensureUserMic = useCallback(async () => {
     if (userMicStreamRef.current) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Microphone access requires HTTPS or localhost. Please check your connection.');
+    }
+
+    let stream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          channelCount: 1,
-          sampleRate: 16000,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 16000 },
         },
       });
+    } catch (firstErr) {
+      console.warn('[UserMic] Constrained getUserMedia failed, trying minimal fallback:', firstErr);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (fallbackErr) {
+        console.warn('[UserMic] Minimal fallback also failed:', fallbackErr);
+        throw fallbackErr;
+      }
+    }
+
+    try {
       userMicStreamRef.current = stream;
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -214,7 +231,9 @@ export function useVoiceConversation() {
       ensurePlaybackAnalyser();
       console.log('[UserMic] Persistent mic graph live (analyser + ring buffer + capture tap)');
     } catch (err) {
-      console.warn('[UserMic] Failed to initialize:', err);
+      console.warn('[UserMic] Failed to build audio graph:', err);
+      stream.getTracks().forEach(t => t.stop());
+      userMicStreamRef.current = null;
       throw err;
     }
   }, [ensurePlaybackAnalyser, RING_BUFFER_MAX_SAMPLES]);
@@ -898,8 +917,8 @@ export function useVoiceConversation() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        channelCount: 1,
-        sampleRate: 16000,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 16000 },
       },
       // Silero VAD thresholds — balanced for noisy environments
       // positiveSpeechThreshold: how confident Silero must be to START an utterance.

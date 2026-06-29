@@ -7,6 +7,7 @@ embeddable widget, and analytics.
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,12 +65,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    try:
+        import migrate_admin
+        migrate_admin.run()
+    except Exception as e:
+        logger.warning(f"Admin migration skipped: {e}")
+    _seed_admin()
+    _check_storage_mount()
+    logger.info("=" * 60)
+    logger.info("VoiceRAG SaaS Platform v3.0 — Starting")
+    logger.info(f"  LLM Provider: {settings.LLM_PROVIDER} ({settings.LLM_MODEL})")
+    logger.info(f"  STT Service:  {settings.STT_SERVICE_URL}")
+    logger.info(f"  TTS Service:  {settings.TTS_SERVICE_URL}")
+    logger.info(f"  Embedding:    {settings.EMBEDDING_MODEL}")
+    logger.info(f"  CORS Origins: {settings.CORS_ORIGINS}")
+    logger.info("=" * 60)
+    yield
+
+
 app = FastAPI(
     title="VoiceRAG SaaS Platform",
     description="Multi-tenant voice-to-voice AI assistant powered by RAG.",
     version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -160,26 +183,34 @@ def _seed_admin():
         db.close()
 
 
-@app.on_event("startup")
-async def startup_event():
-    init_db()
-    # Auto-migrate new columns (idempotent)
-    try:
-        import migrate_admin
-        migrate_admin.run()
-    except Exception as e:
-        logger.warning(f"Admin migration skipped: {e}")
-
-    _seed_admin()
-
-    logger.info("=" * 60)
-    logger.info("VoiceRAG SaaS Platform v3.0 — Starting")
-    logger.info(f"  LLM Provider: {settings.LLM_PROVIDER} ({settings.LLM_MODEL})")
-    logger.info(f"  STT Service:  {settings.STT_SERVICE_URL}")
-    logger.info(f"  TTS Service:  {settings.TTS_SERVICE_URL}")
-    logger.info(f"  Embedding:    {settings.EMBEDDING_MODEL}")
-    logger.info(f"  CORS Origins: {settings.CORS_ORIGINS}")
-    logger.info("=" * 60)
+def _check_storage_mount():
+    """
+    Verify the data directories are writable at startup.
+    On Azure with an Azure Files mount this catches misconfigured mounts early
+    rather than failing silently on the first document upload.
+    """
+    dirs_to_check = {
+        "CLIENT_DATA_DIR": settings.CLIENT_DATA_DIR,
+        "UPLOAD_DIR":      settings.UPLOAD_DIR,
+        "INDEX_DIR":       settings.INDEX_DIR,
+    }
+    all_ok = True
+    for name, path in dirs_to_check.items():
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".write_probe"
+            probe.write_text("ok")
+            probe.unlink()
+            logger.info(f"  Storage [{name}]: {path} — OK")
+        except Exception as e:
+            logger.error(f"  Storage [{name}]: {path} — WRITE FAILED: {e}")
+            all_ok = False
+    if not all_ok:
+        logger.error(
+            "One or more storage directories are not writable. "
+            "On Azure: verify the Azure Files share is mounted at the correct path "
+            "and that CLIENT_DATA_DIR / UPLOAD_DIR / INDEX_DIR env vars point to it."
+        )
 
 
 if __name__ == "__main__":
